@@ -12,29 +12,29 @@ export default defineConfig(({mode}) => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+        includeAssets: ['favicon.ico', 'icon.svg'],
         manifest: {
-          name: 'GenuineOS v3.0',
-          short_name: 'GenuineOS',
-          description: 'Business Management OS for Genuine Hospi Enterprises',
+          name: 'ExpenseMan',
+          short_name: 'ExpenseMan',
+          description: 'Personal Expense & Business Management OS',
           theme_color: '#07090f',
           background_color: '#07090f',
           display: 'standalone',
           icons: [
             {
-              src: 'pwa-192x192.png',
+              src: 'icon.svg',
               sizes: '192x192',
-              type: 'image/png'
+              type: 'image/svg+xml'
             },
             {
-              src: 'pwa-512x512.png',
+              src: 'icon.svg',
               sizes: '512x512',
-              type: 'image/png'
+              type: 'image/svg+xml'
             },
             {
-              src: 'pwa-512x512.png',
+              src: 'icon.svg',
               sizes: '512x512',
-              type: 'image/png',
+              type: 'image/svg+xml',
               purpose: 'any maskable'
             }
           ]
