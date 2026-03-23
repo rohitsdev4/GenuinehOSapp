@@ -287,6 +287,54 @@ export default function Dashboard() {
                     />
                   </div>
                 </div>
+
+                {/* Transaction History Table */}
+                <div className="pt-6">
+                  <h5 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3">Recent Transactions</h5>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-[11px] font-mono">
+                      <thead>
+                        <tr className="text-gray-600 border-b border-[#1e2a40]">
+                          <th className="text-left py-2 font-bold uppercase">Date</th>
+                          <th className="text-left py-2 font-bold uppercase">Type</th>
+                          <th className="text-right py-2 font-bold uppercase">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          ...payments.filter(p => p.partner === user.name).map(p => ({ ...p, type: 'Payment' })),
+                          ...expenses.filter(e => e.partner === user.name).map(e => ({ ...e, type: 'Expense' }))
+                        ]
+                        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                        .slice(0, 5)
+                        .map((txn, i) => (
+                          <tr key={i} className="border-b border-[#1e2a40]/50 last:border-0">
+                            <td className="py-2 text-gray-400">{new Date(txn.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</td>
+                            <td className="py-2">
+                              <span className={cn(
+                                "px-1.5 py-0.5 rounded-[4px] font-bold text-[9px] uppercase",
+                                txn.type === 'Payment' ? "bg-emerald-500/10 text-emerald-500" : "bg-rose-500/10 text-rose-500"
+                              )}>
+                                {txn.type}
+                              </span>
+                            </td>
+                            <td className={cn(
+                              "py-2 text-right font-bold",
+                              txn.type === 'Payment' ? "text-emerald-400" : "text-rose-400"
+                            )}>
+                              {formatCurrency(txn.amount)}
+                            </td>
+                          </tr>
+                        ))}
+                        {user.transactions === 0 && (
+                          <tr>
+                            <td colSpan={3} className="py-4 text-center text-gray-600 italic">No transactions found</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             </div>
           ))}
