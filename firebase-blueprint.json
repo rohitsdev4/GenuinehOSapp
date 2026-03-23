@@ -2,212 +2,150 @@
   "entities": {
     "Payment": {
       "title": "Payment",
-      "description": "Income received from clients or sites",
+      "description": "A payment record.",
       "type": "object",
       "properties": {
-        "date": { "type": "string", "format": "date" },
+        "date": { "type": "string" },
         "amount": { "type": "number" },
-        "partyName": { "type": "string" },
-        "siteId": { "type": "string" },
-        "category": { "type": "string" },
-        "notes": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "partyName": { "type": "string" }
       },
       "required": ["date", "amount", "partyName"]
     },
     "Expense": {
       "title": "Expense",
-      "description": "Business expenses",
+      "description": "An expense record.",
       "type": "object",
       "properties": {
-        "date": { "type": "string", "format": "date" },
+        "date": { "type": "string" },
         "amount": { "type": "number" },
-        "category": { "type": "string" },
-        "siteId": { "type": "string" },
-        "notes": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "category": { "type": "string" }
       },
       "required": ["date", "amount", "category"]
     },
     "Receivable": {
       "title": "Receivable",
-      "description": "Money owed to the business",
+      "description": "A receivable record.",
       "type": "object",
       "properties": {
         "partyName": { "type": "string" },
         "amount": { "type": "number" },
-        "dueDate": { "type": "string", "format": "date" },
+        "dueDate": { "type": "string" },
         "amountCollected": { "type": "number" },
-        "status": { "type": "string", "enum": ["Pending", "Partial", "Collected"] },
-        "notes": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "status": { "type": "string", "enum": ["Pending", "Partial", "Collected"] }
       },
-      "required": ["partyName", "amount", "dueDate"]
+      "required": ["partyName", "amount", "dueDate", "amountCollected", "status"]
     },
     "Site": {
       "title": "Site",
-      "description": "Project sites",
+      "description": "A construction site.",
       "type": "object",
       "properties": {
         "name": { "type": "string" },
         "location": { "type": "string" },
-        "clientName": { "type": "string" },
         "status": { "type": "string", "enum": ["Active", "Completed", "On Hold"] },
-        "startDate": { "type": "string", "format": "date" },
-        "endDate": { "type": "string", "format": "date" },
-        "budget": { "type": "number" },
-        "notes": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "progress": { "type": "number" }
       },
-      "required": ["name", "clientName", "status"]
+      "required": ["name", "location", "status", "progress"]
     },
     "LabourWorker": {
       "title": "LabourWorker",
-      "description": "Labour workers and their wages",
+      "description": "A labour worker.",
       "type": "object",
       "properties": {
         "name": { "type": "string" },
-        "phone": { "type": "string" },
         "dailyWage": { "type": "number" },
         "balance": { "type": "number" },
-        "notes": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "status": { "type": "string", "enum": ["Active", "Inactive"] }
       },
-      "required": ["name", "dailyWage"]
+      "required": ["name", "dailyWage", "balance", "status"]
     },
     "Client": {
       "title": "Client",
-      "description": "Client information",
+      "description": "A client.",
       "type": "object",
       "properties": {
-        "name": { "type": "string" },
-        "company": { "type": "string" },
-        "phone": { "type": "string" },
-        "email": { "type": "string", "format": "email" },
-        "address": { "type": "string" },
-        "notes": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "name": { "type": "string" }
       },
       "required": ["name"]
     },
     "Deal": {
       "title": "Deal",
-      "description": "Sales deals and pipeline",
+      "description": "A business deal.",
       "type": "object",
       "properties": {
         "title": { "type": "string" },
         "clientName": { "type": "string" },
         "amount": { "type": "number" },
-        "stage": { "type": "string", "enum": ["Lead", "Negotiation", "Won", "Lost"] },
-        "notes": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "stage": { "type": "string", "enum": ["Lead", "Negotiation", "Won", "Lost"] }
       },
-      "required": ["title", "clientName", "stage"]
+      "required": ["title", "clientName", "amount", "stage"]
     },
     "Task": {
       "title": "Task",
-      "description": "Business and personal tasks",
+      "description": "A task.",
       "type": "object",
       "properties": {
         "title": { "type": "string" },
-        "dueDate": { "type": "string", "format": "date" },
         "status": { "type": "string", "enum": ["Pending", "In Progress", "Completed"] },
-        "priority": { "type": "string", "enum": ["Low", "Medium", "High"] },
-        "notes": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "priority": { "type": "string", "enum": ["Low", "Medium", "High"] }
       },
-      "required": ["title", "status"]
+      "required": ["title", "status", "priority"]
     },
     "Habit": {
       "title": "Habit",
-      "description": "Daily habits tracking",
+      "description": "A habit.",
       "type": "object",
       "properties": {
         "title": { "type": "string" },
         "frequency": { "type": "string" },
-        "streak": { "type": "number" },
-        "lastCompleted": { "type": "string", "format": "date" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "streak": { "type": "number" }
       },
-      "required": ["title"]
+      "required": ["title", "frequency", "streak"]
     },
     "DiaryEntry": {
       "title": "DiaryEntry",
-      "description": "Daily diary notes",
+      "description": "A diary entry.",
       "type": "object",
       "properties": {
-        "date": { "type": "string", "format": "date" },
-        "content": { "type": "string" },
-        "mood": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "date": { "type": "string" },
+        "content": { "type": "string" }
       },
       "required": ["date", "content"]
     },
     "Goal": {
       "title": "Goal",
-      "description": "Business and personal goals",
+      "description": "A goal.",
       "type": "object",
       "properties": {
         "title": { "type": "string" },
-        "targetDate": { "type": "string", "format": "date" },
         "progress": { "type": "number" },
-        "status": { "type": "string", "enum": ["Active", "Achieved", "Abandoned"] },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "status": { "type": "string", "enum": ["Active", "Achieved", "Abandoned"] }
       },
-      "required": ["title", "status"]
+      "required": ["title", "progress", "status"]
     },
     "Contact": {
       "title": "Contact",
-      "description": "Business contacts",
+      "description": "A contact.",
       "type": "object",
       "properties": {
         "name": { "type": "string" },
-        "phone": { "type": "string" },
-        "category": { "type": "string" },
-        "notes": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "phone": { "type": "string" }
       },
       "required": ["name", "phone"]
-    },
-    "AppSettings": {
-      "title": "AppSettings",
-      "description": "User application settings",
-      "type": "object",
-      "properties": {
-        "theme": { "type": "string", "enum": ["light", "dark"] },
-        "language": { "type": "string" },
-        "notifications": { "type": "boolean" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["theme"]
     }
   },
   "firestore": {
-    "/users/{userId}/payments": { "schema": "Payment", "description": "User's payments" },
-    "/users/{userId}/expenses": { "schema": "Expense", "description": "User's expenses" },
-    "/users/{userId}/receivables": { "schema": "Receivable", "description": "User's receivables" },
-    "/users/{userId}/sites": { "schema": "Site", "description": "User's sites" },
-    "/users/{userId}/labour": { "schema": "LabourWorker", "description": "User's labour workers" },
-    "/users/{userId}/clients": { "schema": "Client", "description": "User's clients" },
-    "/users/{userId}/deals": { "schema": "Deal", "description": "User's deals" },
-    "/users/{userId}/tasks": { "schema": "Task", "description": "User's tasks" },
-    "/users/{userId}/habits": { "schema": "Habit", "description": "User's habits" },
-    "/users/{userId}/diary": { "schema": "DiaryEntry", "description": "User's diary entries" },
-    "/users/{userId}/goals": { "schema": "Goal", "description": "User's goals" },
-    "/users/{userId}/contacts": { "schema": "Contact", "description": "User's contacts" },
-    "/users/{userId}/settings": { "schema": "AppSettings", "description": "User's settings" }
+    "/users/{userId}/payments": { "schema": { "$ref": "Payment" }, "description": "User payments" },
+    "/users/{userId}/expenses": { "schema": { "$ref": "Expense" }, "description": "User expenses" },
+    "/users/{userId}/receivables": { "schema": { "$ref": "Receivable" }, "description": "User receivables" },
+    "/users/{userId}/sites": { "schema": { "$ref": "Site" }, "description": "User sites" },
+    "/users/{userId}/workers": { "schema": { "$ref": "LabourWorker" }, "description": "User workers" },
+    "/users/{userId}/clients": { "schema": { "$ref": "Client" }, "description": "User clients" },
+    "/users/{userId}/deals": { "schema": { "$ref": "Deal" }, "description": "User deals" },
+    "/users/{userId}/tasks": { "schema": { "$ref": "Task" }, "description": "User tasks" },
+    "/users/{userId}/habits": { "schema": { "$ref": "Habit" }, "description": "User habits" },
+    "/users/{userId}/diary": { "schema": { "$ref": "DiaryEntry" }, "description": "User diary entries" },
+    "/users/{userId}/goals": { "schema": { "$ref": "Goal" }, "description": "User goals" },
+    "/users/{userId}/contacts": { "schema": { "$ref": "Contact" }, "description": "User contacts" }
   }
 }
