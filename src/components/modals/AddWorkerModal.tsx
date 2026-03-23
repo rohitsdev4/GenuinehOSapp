@@ -7,14 +7,15 @@ import type { LabourWorker } from '@/src/types';
 interface AddWorkerModalProps {
   isOpen: boolean;
   onClose: () => void;
+  worker?: LabourWorker;
 }
 
-export default function AddWorkerModal({ isOpen, onClose }: AddWorkerModalProps) {
-  const { add } = useFirestore<LabourWorker>('workers');
-  const [name, setName] = useState('');
-  const [dailyWage, setDailyWage] = useState('');
-  const [phone, setPhone] = useState('');
-  const [notes, setNotes] = useState('');
+export default function AddWorkerModal({ isOpen, onClose, worker }: AddWorkerModalProps) {
+  const { add, update } = useFirestore<LabourWorker>('workers');
+  const [name, setName] = useState(worker?.name || '');
+  const [dailyWage, setDailyWage] = useState(worker?.dailyWage.toString() || '');
+  const [phone, setPhone] = useState(worker?.phone || '');
+  const [notes, setNotes] = useState(worker?.notes || '');
   const [loading, setLoading] = useState(false);
 
   if (!isOpen) return null;
@@ -25,17 +26,23 @@ export default function AddWorkerModal({ isOpen, onClose }: AddWorkerModalProps)
 
     setLoading(true);
     try {
-      await add({
+      const workerData = {
         name,
         dailyWage: Number(dailyWage),
         phone,
-        balance: 0,
         notes,
-        status: 'Active',
-      });
+        status: worker?.status || 'Active',
+        balance: worker?.balance || 0,
+      };
+
+      if (worker?.id) {
+        await update(worker.id, workerData);
+      } else {
+        await add(workerData);
+      }
       onClose();
     } catch (error) {
-      console.error('Error adding worker:', error);
+      console.error('Error saving worker:', error);
     } finally {
       setLoading(false);
     }
@@ -58,7 +65,9 @@ export default function AddWorkerModal({ isOpen, onClose }: AddWorkerModalProps)
           className="relative w-full max-w-lg bg-[#111520] border border-[#1e2a40] rounded-2xl shadow-2xl overflow-hidden"
         >
           <div className="flex items-center justify-between p-5 border-b border-[#1e2a40] bg-[#0b0e14]">
-            <h2 className="text-lg font-bold text-white font-['Syne']">Add New Worker</h2>
+            <h2 className="text-lg font-bold text-white font-['Syne']">
+              {worker ? 'Edit Worker' : 'Add New Worker'}
+            </h2>
             <button onClick={onClose} className="p-2 text-gray-400 hover:text-white bg-[#161c2a] rounded-lg transition">
               <X className="w-4 h-4" />
             </button>

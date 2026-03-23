@@ -1,10 +1,11 @@
 import PageHeader from '@/src/components/ui/PageHeader';
-import { CheckSquare, Plus, Flame, Circle, CheckCircle2, Edit2, Trash2, MoreVertical } from 'lucide-react';
+import { CheckSquare, Plus, Flame, Circle, CheckCircle2, Edit2, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '@/src/lib/utils';
 import { useState } from 'react';
 import AddTaskModal from '@/src/components/modals/AddTaskModal';
 import AddHabitModal from '@/src/components/modals/AddHabitModal';
+import ConfirmModal from '@/src/components/ui/ConfirmModal';
 import { useFirestore } from '@/src/hooks/useFirestore';
 import type { Task, Habit } from '@/src/types';
 
@@ -17,6 +18,8 @@ export default function Tasks() {
   const [isHabitModalOpen, setIsHabitModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
+  const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
+  const [deletingHabitId, setDeletingHabitId] = useState<string | null>(null);
 
   const handleToggleTask = async (task: Task) => {
     if (!task.id) return;
@@ -28,9 +31,10 @@ export default function Tasks() {
     setIsTaskModalOpen(true);
   };
 
-  const handleDeleteTask = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this task?')) {
-      await removeTask(id);
+  const handleDeleteTask = async () => {
+    if (deletingTaskId) {
+      await removeTask(deletingTaskId);
+      setDeletingTaskId(null);
     }
   };
 
@@ -39,9 +43,10 @@ export default function Tasks() {
     setIsHabitModalOpen(true);
   };
 
-  const handleDeleteHabit = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this habit?')) {
-      await removeHabit(id);
+  const handleDeleteHabit = async () => {
+    if (deletingHabitId) {
+      await removeHabit(deletingHabitId);
+      setDeletingHabitId(null);
     }
   };
 
@@ -146,7 +151,7 @@ export default function Tasks() {
                     <Edit2 className="w-4 h-4" />
                   </button>
                   <button 
-                    onClick={() => task.id && handleDeleteTask(task.id)}
+                    onClick={() => task.id && setDeletingTaskId(task.id)}
                     className="p-2 text-gray-500 hover:text-rose-500 transition"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -189,7 +194,7 @@ export default function Tasks() {
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
                       <button 
-                        onClick={() => habit.id && handleDeleteHabit(habit.id)}
+                        onClick={() => habit.id && setDeletingHabitId(habit.id)}
                         className="p-1.5 text-gray-500 hover:text-rose-500 transition"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -233,6 +238,22 @@ export default function Tasks() {
           habit={editingHabit}
         />
       )}
+
+      <ConfirmModal 
+        isOpen={!!deletingTaskId}
+        onClose={() => setDeletingTaskId(null)}
+        onConfirm={handleDeleteTask}
+        title="Delete Task"
+        message="Are you sure you want to delete this task? This action cannot be undone."
+      />
+
+      <ConfirmModal 
+        isOpen={!!deletingHabitId}
+        onClose={() => setDeletingHabitId(null)}
+        onConfirm={handleDeleteHabit}
+        title="Delete Habit"
+        message="Are you sure you want to delete this habit? This action cannot be undone."
+      />
     </div>
   );
 }

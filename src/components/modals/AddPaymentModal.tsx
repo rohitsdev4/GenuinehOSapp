@@ -7,16 +7,17 @@ import type { Payment } from '@/src/types';
 interface AddPaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
+  payment?: Payment;
 }
 
-export default function AddPaymentModal({ isOpen, onClose }: AddPaymentModalProps) {
-  const { add } = useFirestore<Payment>('payments');
-  const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState('UPI');
-  const [partyName, setPartyName] = useState('');
-  const [partner, setPartner] = useState('Rohit');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [notes, setNotes] = useState('');
+export default function AddPaymentModal({ isOpen, onClose, payment }: AddPaymentModalProps) {
+  const { add, update } = useFirestore<Payment>('payments');
+  const [amount, setAmount] = useState(payment?.amount.toString() || '');
+  const [category, setCategory] = useState(payment?.category || 'UPI');
+  const [partyName, setPartyName] = useState(payment?.partyName || '');
+  const [partner, setPartner] = useState(payment?.partner || 'Rohit');
+  const [date, setDate] = useState(payment?.date || new Date().toISOString().split('T')[0]);
+  const [notes, setNotes] = useState(payment?.notes || '');
   const [loading, setLoading] = useState(false);
 
   if (!isOpen) return null;
@@ -27,17 +28,23 @@ export default function AddPaymentModal({ isOpen, onClose }: AddPaymentModalProp
 
     setLoading(true);
     try {
-      await add({
+      const paymentData = {
         amount: Number(amount),
         category,
         partyName,
         partner,
         date,
         notes,
-      });
+      };
+
+      if (payment?.id) {
+        await update(payment.id, paymentData);
+      } else {
+        await add(paymentData);
+      }
       onClose();
     } catch (error) {
-      console.error('Error adding payment:', error);
+      console.error('Error saving payment:', error);
     } finally {
       setLoading(false);
     }
@@ -60,7 +67,9 @@ export default function AddPaymentModal({ isOpen, onClose }: AddPaymentModalProp
           className="relative w-full max-w-lg bg-[#111520] border border-[#1e2a40] rounded-2xl shadow-2xl overflow-hidden"
         >
           <div className="flex items-center justify-between p-5 border-b border-[#1e2a40] bg-[#0b0e14]">
-            <h2 className="text-lg font-bold text-white font-['Syne']">Add Payment Received</h2>
+            <h2 className="text-lg font-bold text-white font-['Syne']">
+              {payment ? 'Edit Payment' : 'Add Payment Received'}
+            </h2>
             <button onClick={onClose} className="p-2 text-gray-400 hover:text-white bg-[#161c2a] rounded-lg transition">
               <X className="w-4 h-4" />
             </button>

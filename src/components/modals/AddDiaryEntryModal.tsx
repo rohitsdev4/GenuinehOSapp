@@ -7,13 +7,14 @@ import type { DiaryEntry } from '@/src/types';
 interface AddDiaryEntryModalProps {
   isOpen: boolean;
   onClose: () => void;
+  entry?: DiaryEntry;
 }
 
-export default function AddDiaryEntryModal({ isOpen, onClose }: AddDiaryEntryModalProps) {
-  const { add } = useFirestore<DiaryEntry>('diary');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [content, setContent] = useState('');
-  const [mood, setMood] = useState('Neutral');
+export default function AddDiaryEntryModal({ isOpen, onClose, entry }: AddDiaryEntryModalProps) {
+  const { add, update } = useFirestore<DiaryEntry>('diary');
+  const [date, setDate] = useState(entry?.date || new Date().toISOString().split('T')[0]);
+  const [content, setContent] = useState(entry?.content || '');
+  const [mood, setMood] = useState(entry?.mood || 'Neutral');
   const [loading, setLoading] = useState(false);
 
   if (!isOpen) return null;
@@ -24,14 +25,20 @@ export default function AddDiaryEntryModal({ isOpen, onClose }: AddDiaryEntryMod
 
     setLoading(true);
     try {
-      await add({
+      const entryData = {
         date,
         content,
         mood,
-      });
+      };
+
+      if (entry?.id) {
+        await update(entry.id, entryData);
+      } else {
+        await add(entryData);
+      }
       onClose();
     } catch (error) {
-      console.error('Error adding diary entry:', error);
+      console.error('Error saving diary entry:', error);
     } finally {
       setLoading(false);
     }
@@ -54,7 +61,9 @@ export default function AddDiaryEntryModal({ isOpen, onClose }: AddDiaryEntryMod
           className="relative w-full max-w-lg bg-[#111520] border border-[#1e2a40] rounded-2xl shadow-2xl overflow-hidden"
         >
           <div className="flex items-center justify-between p-5 border-b border-[#1e2a40] bg-[#0b0e14]">
-            <h2 className="text-lg font-bold text-white font-['Syne']">New Diary Entry</h2>
+            <h2 className="text-lg font-bold text-white font-['Syne']">
+              {entry ? 'Edit Diary Entry' : 'New Diary Entry'}
+            </h2>
             <button onClick={onClose} className="p-2 text-gray-400 hover:text-white bg-[#161c2a] rounded-lg transition">
               <X className="w-4 h-4" />
             </button>

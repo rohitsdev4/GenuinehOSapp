@@ -7,14 +7,15 @@ import type { Contact } from '@/src/types';
 interface AddContactModalProps {
   isOpen: boolean;
   onClose: () => void;
+  contact?: Contact;
 }
 
-export default function AddContactModal({ isOpen, onClose }: AddContactModalProps) {
-  const { add } = useFirestore<Contact>('contacts');
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [category, setCategory] = useState('Vendor');
-  const [notes, setNotes] = useState('');
+export default function AddContactModal({ isOpen, onClose, contact }: AddContactModalProps) {
+  const { add, update } = useFirestore<Contact>('contacts');
+  const [name, setName] = useState(contact?.name || '');
+  const [phone, setPhone] = useState(contact?.phone || '');
+  const [category, setCategory] = useState(contact?.category || 'Vendor');
+  const [notes, setNotes] = useState(contact?.notes || '');
   const [loading, setLoading] = useState(false);
 
   if (!isOpen) return null;
@@ -25,15 +26,21 @@ export default function AddContactModal({ isOpen, onClose }: AddContactModalProp
 
     setLoading(true);
     try {
-      await add({
+      const contactData = {
         name,
         phone,
         category,
         notes,
-      });
+      };
+
+      if (contact?.id) {
+        await update(contact.id, contactData);
+      } else {
+        await add(contactData);
+      }
       onClose();
     } catch (error) {
-      console.error('Error adding contact:', error);
+      console.error('Error saving contact:', error);
     } finally {
       setLoading(false);
     }
@@ -56,7 +63,9 @@ export default function AddContactModal({ isOpen, onClose }: AddContactModalProp
           className="relative w-full max-w-lg bg-[#111520] border border-[#1e2a40] rounded-2xl shadow-2xl overflow-hidden"
         >
           <div className="flex items-center justify-between p-5 border-b border-[#1e2a40] bg-[#0b0e14]">
-            <h2 className="text-lg font-bold text-white font-['Syne']">Add New Contact</h2>
+            <h2 className="text-lg font-bold text-white font-['Syne']">
+              {contact ? 'Edit Contact' : 'Add New Contact'}
+            </h2>
             <button onClick={onClose} className="p-2 text-gray-400 hover:text-white bg-[#161c2a] rounded-lg transition">
               <X className="w-4 h-4" />
             </button>

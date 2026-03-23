@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { CreditCard, Plus, ArrowDownRight, Calendar, User, Trash2 } from 'lucide-react';
+import { CreditCard, Plus, ArrowDownRight, Calendar, User, Trash2, Edit2 } from 'lucide-react';
 import AddPaymentModal from '@/src/components/modals/AddPaymentModal';
+import ConfirmModal from '@/src/components/ui/ConfirmModal';
 import { useFirestore } from '@/src/hooks/useFirestore';
 import type { Payment } from '@/src/types';
 import { formatDate } from '@/src/lib/utils';
@@ -10,11 +11,24 @@ import { motion } from 'motion/react';
 export default function Payments() {
   const { data: payments, loading, remove: removePayment } = useFirestore<Payment>('payments');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<Payment | undefined>(undefined);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const handleDeletePayment = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this payment?')) {
-      await removePayment(id);
+  const handleDeletePayment = async () => {
+    if (deletingId) {
+      await removePayment(deletingId);
+      setDeletingId(null);
     }
+  };
+
+  const handleEditPayment = (payment: Payment) => {
+    setEditingPayment(payment);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingPayment(undefined);
   };
 
   if (loading) return <div className="p-8 text-center text-gray-500">Loading payments...</div>;
@@ -87,12 +101,20 @@ export default function Payments() {
                       ₹{payment.amount.toLocaleString('en-IN')}
                     </td>
                     <td className="p-4 text-right">
-                      <button 
-                        onClick={() => payment.id && handleDeletePayment(payment.id)}
-                        className="p-2 text-gray-500 hover:text-rose-500 transition"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button 
+                          onClick={() => handleEditPayment(payment)}
+                          className="p-2 text-gray-500 hover:text-[#00d4aa] transition"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => payment.id && setDeletingId(payment.id)}
+                          className="p-2 text-gray-500 hover:text-rose-500 transition"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </motion.tr>
                 ))}
@@ -103,8 +125,20 @@ export default function Payments() {
       )}
 
       {isModalOpen && (
-        <AddPaymentModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+        <AddPaymentModal 
+          isOpen={isModalOpen} 
+          onClose={handleCloseModal} 
+          payment={editingPayment}
+        />
       )}
+
+      <ConfirmModal 
+        isOpen={!!deletingId}
+        onClose={() => setDeletingId(null)}
+        onConfirm={handleDeletePayment}
+        title="Delete Payment"
+        message="Are you sure you want to delete this payment record? This action cannot be undone."
+      />
     </div>
   );
 }

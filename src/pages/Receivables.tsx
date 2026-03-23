@@ -1,20 +1,34 @@
 import { useState } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { HandCoins, Plus, AlertTriangle, Phone, Trash2 } from 'lucide-react';
+import { HandCoins, Plus, AlertTriangle, Phone, Trash2, Edit2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { formatCurrency } from '@/src/lib/utils';
 import AddReceivableModal from '@/src/components/modals/AddReceivableModal';
+import ConfirmModal from '@/src/components/ui/ConfirmModal';
 import { useFirestore } from '@/src/hooks/useFirestore';
 import type { Receivable } from '@/src/types';
 
 export default function Receivables() {
   const { data: receivables, loading, remove: removeReceivable } = useFirestore<Receivable>('receivables');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingReceivable, setEditingReceivable] = useState<Receivable | undefined>(undefined);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const handleDeleteReceivable = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this receivable?')) {
-      await removeReceivable(id);
+  const handleDeleteReceivable = async () => {
+    if (deletingId) {
+      await removeReceivable(deletingId);
+      setDeletingId(null);
     }
+  };
+
+  const handleEditReceivable = (receivable: Receivable) => {
+    setEditingReceivable(receivable);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingReceivable(undefined);
   };
 
   if (loading) return <div className="p-8 text-center text-gray-500">Loading receivables...</div>;
@@ -102,7 +116,13 @@ export default function Receivables() {
                   </div>
                   <div className="flex items-center gap-2">
                     <button 
-                      onClick={() => rec.id && handleDeleteReceivable(rec.id)}
+                      onClick={() => handleEditReceivable(rec)}
+                      className="w-10 h-10 rounded-full bg-[#1e2a40] flex items-center justify-center text-gray-500 hover:text-[#00d4aa] transition shrink-0"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => rec.id && setDeletingId(rec.id)}
                       className="w-10 h-10 rounded-full bg-[#1e2a40] flex items-center justify-center text-gray-500 hover:text-rose-500 transition shrink-0"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -119,8 +139,20 @@ export default function Receivables() {
       </div>
 
       {isModalOpen && (
-        <AddReceivableModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+        <AddReceivableModal 
+          isOpen={isModalOpen} 
+          onClose={handleCloseModal} 
+          receivable={editingReceivable}
+        />
       )}
+
+      <ConfirmModal 
+        isOpen={!!deletingId}
+        onClose={() => setDeletingId(null)}
+        onConfirm={handleDeleteReceivable}
+        title="Delete Receivable"
+        message="Are you sure you want to delete this receivable record? This action cannot be undone."
+      />
     </div>
   );
 }

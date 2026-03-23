@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { Receipt, Plus, Search, Filter, ArrowDownRight, User, Trash2 } from 'lucide-react';
+import { Receipt, Plus, Search, Filter, ArrowDownRight, User, Trash2, Edit2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { formatCurrency, formatDate } from '@/src/lib/utils';
 import AddExpenseModal from '@/src/components/modals/AddExpenseModal';
+import ConfirmModal from '@/src/components/ui/ConfirmModal';
 import { useFirestore } from '@/src/hooks/useFirestore';
 import type { Expense } from '@/src/types';
 
@@ -11,11 +12,24 @@ export default function Expenses() {
   const { data: expenses, loading, remove: removeExpense } = useFirestore<Expense>('expenses');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [editingExpense, setEditingExpense] = useState<Expense | undefined>(undefined);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const handleDeleteExpense = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this expense?')) {
-      await removeExpense(id);
+  const handleDeleteExpense = async () => {
+    if (deletingId) {
+      await removeExpense(deletingId);
+      setDeletingId(null);
     }
+  };
+
+  const handleEditExpense = (expense: Expense) => {
+    setEditingExpense(expense);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingExpense(undefined);
   };
 
   const filteredExpenses = expenses.filter(expense => 
@@ -107,12 +121,20 @@ export default function Expenses() {
                       {formatCurrency(expense.amount)}
                     </td>
                     <td className="p-4 text-right">
-                      <button 
-                        onClick={() => expense.id && handleDeleteExpense(expense.id)}
-                        className="p-2 text-gray-500 hover:text-rose-500 transition"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button 
+                          onClick={() => handleEditExpense(expense)}
+                          className="p-2 text-gray-500 hover:text-[#00d4aa] transition"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => expense.id && setDeletingId(expense.id)}
+                          className="p-2 text-gray-500 hover:text-rose-500 transition"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </motion.tr>
                 ))
@@ -123,8 +145,20 @@ export default function Expenses() {
       </div>
 
       {isModalOpen && (
-        <AddExpenseModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+        <AddExpenseModal 
+          isOpen={isModalOpen} 
+          onClose={handleCloseModal} 
+          expense={editingExpense}
+        />
       )}
+
+      <ConfirmModal 
+        isOpen={!!deletingId}
+        onClose={() => setDeletingId(null)}
+        onConfirm={handleDeleteExpense}
+        title="Delete Expense"
+        message="Are you sure you want to delete this expense record? This action cannot be undone."
+      />
     </div>
   );
 }

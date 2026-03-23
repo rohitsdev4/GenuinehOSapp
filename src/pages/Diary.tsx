@@ -1,20 +1,34 @@
 import { useState } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { BookText, Plus, Calendar, Trash2 } from 'lucide-react';
+import { BookText, Plus, Calendar, Trash2, Edit2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { formatDate } from '@/src/lib/utils';
 import AddDiaryEntryModal from '@/src/components/modals/AddDiaryEntryModal';
+import ConfirmModal from '@/src/components/ui/ConfirmModal';
 import { useFirestore } from '@/src/hooks/useFirestore';
 import type { DiaryEntry } from '@/src/types';
 
 export default function Diary() {
   const { data: entries, loading, remove: removeEntry } = useFirestore<DiaryEntry>('diary');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<DiaryEntry | undefined>(undefined);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const handleDeleteEntry = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this diary entry?')) {
-      await removeEntry(id);
+  const handleDeleteEntry = async () => {
+    if (deletingId) {
+      await removeEntry(deletingId);
+      setDeletingId(null);
     }
+  };
+
+  const handleEditEntry = (entry: DiaryEntry) => {
+    setEditingEntry(entry);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingEntry(undefined);
   };
 
   if (loading) return <div className="p-8 text-center text-gray-500">Loading diary entries...</div>;
@@ -67,12 +81,20 @@ export default function Diary() {
                     {entry.mood && <p className="text-xs text-[#00d4aa] font-mono">Mood: {entry.mood}</p>}
                   </div>
                 </div>
-                <button 
-                  onClick={() => entry.id && handleDeleteEntry(entry.id)}
-                  className="p-2 text-gray-500 hover:text-rose-500 transition"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => handleEditEntry(entry)}
+                    className="p-2 text-gray-500 hover:text-[#00d4aa] transition"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button 
+                    onClick={() => entry.id && setDeletingId(entry.id)}
+                    className="p-2 text-gray-500 hover:text-rose-500 transition"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
               <p className="text-gray-400 text-sm leading-relaxed whitespace-pre-wrap">
                 {entry.content}
@@ -83,8 +105,20 @@ export default function Diary() {
       </div>
 
       {isModalOpen && (
-        <AddDiaryEntryModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+        <AddDiaryEntryModal 
+          isOpen={isModalOpen} 
+          onClose={handleCloseModal} 
+          entry={editingEntry}
+        />
       )}
+
+      <ConfirmModal 
+        isOpen={!!deletingId}
+        onClose={() => setDeletingId(null)}
+        onConfirm={handleDeleteEntry}
+        title="Delete Diary Entry"
+        message="Are you sure you want to delete this diary entry? This action cannot be undone."
+      />
     </div>
   );
 }

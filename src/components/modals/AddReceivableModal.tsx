@@ -7,14 +7,15 @@ import type { Receivable } from '@/src/types';
 interface AddReceivableModalProps {
   isOpen: boolean;
   onClose: () => void;
+  receivable?: Receivable;
 }
 
-export default function AddReceivableModal({ isOpen, onClose }: AddReceivableModalProps) {
-  const { add } = useFirestore<Receivable>('receivables');
-  const [partyName, setPartyName] = useState('');
-  const [amount, setAmount] = useState('');
-  const [dueDate, setDueDate] = useState('');
-  const [notes, setNotes] = useState('');
+export default function AddReceivableModal({ isOpen, onClose, receivable }: AddReceivableModalProps) {
+  const { add, update } = useFirestore<Receivable>('receivables');
+  const [partyName, setPartyName] = useState(receivable?.partyName || '');
+  const [amount, setAmount] = useState(receivable?.amount.toString() || '');
+  const [dueDate, setDueDate] = useState(receivable?.dueDate || '');
+  const [notes, setNotes] = useState(receivable?.notes || '');
   const [loading, setLoading] = useState(false);
 
   if (!isOpen) return null;
@@ -25,17 +26,23 @@ export default function AddReceivableModal({ isOpen, onClose }: AddReceivableMod
 
     setLoading(true);
     try {
-      await add({
+      const receivableData = {
         partyName,
         amount: Number(amount),
         dueDate,
-        amountCollected: 0,
-        status: 'Pending',
+        amountCollected: receivable?.amountCollected || 0,
+        status: receivable?.status || 'Pending',
         notes,
-      });
+      };
+
+      if (receivable?.id) {
+        await update(receivable.id, receivableData);
+      } else {
+        await add(receivableData);
+      }
       onClose();
     } catch (error) {
-      console.error('Error adding receivable:', error);
+      console.error('Error saving receivable:', error);
     } finally {
       setLoading(false);
     }
@@ -58,7 +65,9 @@ export default function AddReceivableModal({ isOpen, onClose }: AddReceivableMod
           className="relative w-full max-w-lg bg-[#111520] border border-[#1e2a40] rounded-2xl shadow-2xl overflow-hidden"
         >
           <div className="flex items-center justify-between p-5 border-b border-[#1e2a40] bg-[#0b0e14]">
-            <h2 className="text-lg font-bold text-white font-['Syne']">New Receivable</h2>
+            <h2 className="text-lg font-bold text-white font-['Syne']">
+              {receivable ? 'Edit Receivable' : 'New Receivable'}
+            </h2>
             <button onClick={onClose} className="p-2 text-gray-400 hover:text-white bg-[#161c2a] rounded-lg transition">
               <X className="w-4 h-4" />
             </button>

@@ -1,20 +1,34 @@
 import { useState } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { Users, Plus, Phone, MapPin, IndianRupee, Trash2 } from 'lucide-react';
+import { Users, Plus, Phone, IndianRupee, Trash2, Edit2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { formatCurrency } from '@/src/lib/utils';
 import AddWorkerModal from '@/src/components/modals/AddWorkerModal';
+import ConfirmModal from '@/src/components/ui/ConfirmModal';
 import { useFirestore } from '@/src/hooks/useFirestore';
 import type { LabourWorker } from '@/src/types';
 
 export default function Labour() {
   const { data: workers, loading, update, remove: removeWorker } = useFirestore<LabourWorker>('workers');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingWorker, setEditingWorker] = useState<LabourWorker | undefined>(undefined);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const handleDeleteWorker = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this worker?')) {
-      await removeWorker(id);
+  const handleDeleteWorker = async () => {
+    if (deletingId) {
+      await removeWorker(deletingId);
+      setDeletingId(null);
     }
+  };
+
+  const handleEditWorker = (worker: LabourWorker) => {
+    setEditingWorker(worker);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingWorker(undefined);
   };
 
   const handleMarkPresent = async (worker: LabourWorker) => {
@@ -81,7 +95,13 @@ export default function Labour() {
                   </div>
                   <div className="flex items-center gap-2">
                     <button 
-                      onClick={() => worker.id && handleDeleteWorker(worker.id)}
+                      onClick={() => handleEditWorker(worker)}
+                      className="p-1 text-gray-500 hover:text-[#00d4aa] transition"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => worker.id && setDeletingId(worker.id)}
                       className="p-1 text-gray-500 hover:text-rose-500 transition"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -138,8 +158,20 @@ export default function Labour() {
       </div>
 
       {isModalOpen && (
-        <AddWorkerModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+        <AddWorkerModal 
+          isOpen={isModalOpen} 
+          onClose={handleCloseModal} 
+          worker={editingWorker}
+        />
       )}
+
+      <ConfirmModal 
+        isOpen={!!deletingId}
+        onClose={() => setDeletingId(null)}
+        onConfirm={handleDeleteWorker}
+        title="Delete Worker"
+        message="Are you sure you want to delete this worker? This action cannot be undone."
+      />
     </div>
   );
 }

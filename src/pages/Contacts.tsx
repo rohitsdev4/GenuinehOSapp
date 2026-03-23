@@ -1,20 +1,34 @@
 import { useState } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { Contact, Plus, Search, Phone, Mail, Trash2 } from 'lucide-react';
+import { Contact, Plus, Search, Phone, Mail, Trash2, Edit2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import AddContactModal from '@/src/components/modals/AddContactModal';
+import ConfirmModal from '@/src/components/ui/ConfirmModal';
 import { useFirestore } from '@/src/hooks/useFirestore';
 import type { Contact as ContactType } from '@/src/types';
 
 export default function Contacts() {
   const { data: contacts, loading, remove: removeContact } = useFirestore<ContactType>('contacts');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingContact, setEditingContact] = useState<ContactType | undefined>(undefined);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const handleDeleteContact = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this contact?')) {
-      await removeContact(id);
+  const handleDeleteContact = async () => {
+    if (deletingId) {
+      await removeContact(deletingId);
+      setDeletingId(null);
     }
+  };
+
+  const handleEditContact = (contact: ContactType) => {
+    setEditingContact(contact);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingContact(undefined);
   };
 
   const filteredContacts = contacts.filter(contact => 
@@ -93,12 +107,20 @@ export default function Contacts() {
                       <span className="sm:hidden">{contact.phone}</span>
                     </a>
                   )}
-                  <button 
-                    onClick={() => contact.id && handleDeleteContact(contact.id)}
-                    className="p-2 text-gray-500 hover:text-rose-500 transition"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button 
+                      onClick={() => handleEditContact(contact)}
+                      className="p-2 text-gray-500 hover:text-[#00d4aa] transition"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => contact.id && setDeletingId(contact.id)}
+                      className="p-2 text-gray-500 hover:text-rose-500 transition"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </motion.div>
             ))
@@ -107,8 +129,20 @@ export default function Contacts() {
       </div>
 
       {isModalOpen && (
-        <AddContactModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+        <AddContactModal 
+          isOpen={isModalOpen} 
+          onClose={handleCloseModal} 
+          contact={editingContact}
+        />
       )}
+
+      <ConfirmModal 
+        isOpen={!!deletingId}
+        onClose={() => setDeletingId(null)}
+        onConfirm={handleDeleteContact}
+        title="Delete Contact"
+        message="Are you sure you want to delete this contact? This action cannot be undone."
+      />
     </div>
   );
 }

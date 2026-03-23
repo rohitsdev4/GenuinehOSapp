@@ -7,16 +7,17 @@ import type { Expense } from '@/src/types';
 interface AddExpenseModalProps {
   isOpen: boolean;
   onClose: () => void;
+  expense?: Expense;
 }
 
-export default function AddExpenseModal({ isOpen, onClose }: AddExpenseModalProps) {
-  const { add } = useFirestore<Expense>('expenses');
-  const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState('Material');
-  const [partyName, setPartyName] = useState('');
-  const [partner, setPartner] = useState('Rohit');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [notes, setNotes] = useState('');
+export default function AddExpenseModal({ isOpen, onClose, expense }: AddExpenseModalProps) {
+  const { add, update } = useFirestore<Expense>('expenses');
+  const [amount, setAmount] = useState(expense?.amount.toString() || '');
+  const [category, setCategory] = useState(expense?.category || 'Material');
+  const [partyName, setPartyName] = useState(expense?.partyName || '');
+  const [partner, setPartner] = useState(expense?.partner || 'Rohit');
+  const [date, setDate] = useState(expense?.date || new Date().toISOString().split('T')[0]);
+  const [notes, setNotes] = useState(expense?.notes || '');
   const [loading, setLoading] = useState(false);
 
   if (!isOpen) return null;
@@ -27,17 +28,23 @@ export default function AddExpenseModal({ isOpen, onClose }: AddExpenseModalProp
 
     setLoading(true);
     try {
-      await add({
+      const expenseData = {
         amount: Number(amount),
         category,
         partyName,
         partner,
         date,
         notes,
-      });
+      };
+
+      if (expense?.id) {
+        await update(expense.id, expenseData);
+      } else {
+        await add(expenseData);
+      }
       onClose();
     } catch (error) {
-      console.error('Error adding expense:', error);
+      console.error('Error saving expense:', error);
     } finally {
       setLoading(false);
     }
@@ -60,7 +67,9 @@ export default function AddExpenseModal({ isOpen, onClose }: AddExpenseModalProp
           className="relative w-full max-w-lg bg-[#111520] border border-[#1e2a40] rounded-2xl shadow-2xl overflow-hidden"
         >
           <div className="flex items-center justify-between p-5 border-b border-[#1e2a40] bg-[#0b0e14]">
-            <h2 className="text-lg font-bold text-white font-['Syne']">Add New Expense</h2>
+            <h2 className="text-lg font-bold text-white font-['Syne']">
+              {expense ? 'Edit Expense' : 'Add New Expense'}
+            </h2>
             <button onClick={onClose} className="p-2 text-gray-400 hover:text-white bg-[#161c2a] rounded-lg transition">
               <X className="w-4 h-4" />
             </button>
