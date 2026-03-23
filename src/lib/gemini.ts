@@ -30,6 +30,7 @@ interface GeminiRequest {
   prompt: string;
   model?: GeminiModel;
   context?: string;
+  systemInstruction?: string;
   maxTokens?: number;
   history?: Message[];
 }
@@ -105,6 +106,7 @@ export async function callGemini({
   prompt,
   model = 'gemini-3.1-flash-lite-preview',
   context = '',
+  systemInstruction = SYSTEM_PROMPT,
   maxTokens = 600,
   history = [],
 }: GeminiRequest): Promise<GeminiResponse> {
@@ -130,7 +132,7 @@ export async function callGemini({
       model: model,
       contents: fullPrompt,
       config: {
-        systemInstruction: SYSTEM_PROMPT,
+        systemInstruction: systemInstruction,
         maxOutputTokens: maxTokens,
         temperature: 0.7,
         tools: [{ 

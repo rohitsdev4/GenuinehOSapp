@@ -1,9 +1,91 @@
+import { useState, useRef, useEffect } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { Sparkles, Star, Moon, Sun, Clock, Compass, Zap, ShieldCheck } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Sparkles, Star, Moon, Sun, Clock, Compass, Zap, ShieldCheck, Send, Bot, User, Loader2, Trash2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { callGemini, type GeminiModel } from '@/src/lib/gemini';
+import { cn } from '@/src/lib/utils';
+
+interface Message {
+  role: 'user' | 'ai';
+  text: string;
+  time: string;
+}
+
+const ASTRO_STORAGE_KEY = 'genuineos_astro_chat_history';
 
 export default function Astro() {
   const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
+  
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const saved = localStorage.getItem(ASTRO_STORAGE_KEY);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Failed to parse astro chat history', e);
+      }
+    }
+    return [{
+      role: 'ai',
+      text: 'Namaste Rohit bhai! 🙏 Main aapka Astro Business Advisor hoon. \n\nGraho ki dasha aur aapke business ke sitare kya kehte hain? Kuch bhi pucho!',
+      time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+    }];
+  });
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    localStorage.setItem(ASTRO_STORAGE_KEY, JSON.stringify(messages));
+  }, [messages]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, loading]);
+
+  const clearHistory = () => {
+    const initialMsg: Message = {
+      role: 'ai',
+      text: 'Namaste Rohit bhai! 🙏 Main aapka Astro Business Advisor hoon. \n\nGraho ki dasha aur aapke business ke sitare kya kehte hain? Kuch bhi pucho!',
+      time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+    };
+    setMessages([initialMsg]);
+    localStorage.setItem(ASTRO_STORAGE_KEY, JSON.stringify([initialMsg]));
+  };
+
+  const sendMessage = async (text: string) => {
+    if (!text.trim() || loading) return;
+    const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+
+    setMessages(prev => [...prev, { role: 'user', text, time }]);
+    setInput('');
+    setLoading(true);
+
+    try {
+      const res = await callGemini({
+        prompt: text,
+        model: 'gemini-3.1-flash-lite-preview',
+        systemInstruction: "You are an expert Astro Business Advisor for Rohit Kumar, a business owner in the medical infrastructure and gas pipeline industry. Provide guidance based on Vedic Astrology principles mixed with practical business wisdom. Use a mix of Hindi and English (Hinglish). Be encouraging, wise, and slightly mystical but grounded in business reality.",
+        maxTokens: 500,
+        history: messages.map(m => ({ role: m.role, text: m.text })),
+      });
+      
+      setMessages(prev => [...prev, {
+        role: 'ai',
+        text: res.text || 'Sitare abhi khamosh hain...',
+        time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+      }]);
+    } catch (err: any) {
+      let errorText = '❌ Sitare connect nahi ho paa rahe. Internet check karo.';
+      setMessages(prev => [...prev, {
+        role: 'ai',
+        text: errorText,
+        time,
+      }]);
+    } finally {
+      setLoading(false);
+    }
+  };
   
   const insights = [
     { 
@@ -76,6 +158,100 @@ export default function Astro() {
               <div>
                 <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-1">Shubh Muhurat Today</p>
                 <p className="text-sm text-gray-300 font-medium">11:45 AM to 12:30 PM — Best for signing new OT contracts.</p>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Astro Chat Window */}
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="bg-[#111520] border border-[#1e2a40] rounded-2xl flex flex-col h-[500px] shadow-xl overflow-hidden"
+          >
+            <div className="p-4 border-b border-[#1e2a40] bg-[#0b0e14] flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-[#00d4aa]/10 flex items-center justify-center">
+                  <Sparkles className="w-4 h-4 text-[#00d4aa]" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Ask the Stars</h3>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-widest">Live Astro Guidance</p>
+                </div>
+              </div>
+              <button 
+                onClick={clearHistory}
+                className="p-2 text-gray-500 hover:text-red-400 transition"
+                title="Clear Chat"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+              <AnimatePresence initial={false}>
+                {messages.map((msg, i) => (
+                  <motion.div 
+                    key={i} 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={cn("flex gap-3", msg.role === 'user' ? "flex-row-reverse" : "flex-row")}
+                  >
+                    <div className={cn(
+                      "w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0",
+                      msg.role === 'user' ? "bg-[#00d4aa] text-[#07090f]" : "bg-[#1e2a40] text-gray-400"
+                    )}>
+                      {msg.role === 'user' ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
+                    </div>
+                    <div className={cn(
+                      "max-w-[85%] px-3 py-2 rounded-xl text-xs leading-relaxed",
+                      msg.role === 'user'
+                        ? "bg-[#00d4aa] text-[#07090f] font-medium rounded-tr-none"
+                        : "bg-[#161c2a] border border-[#1e2a40] text-gray-300 rounded-tl-none"
+                    )}>
+                      <p className="whitespace-pre-wrap">{msg.text}</p>
+                      <div className={cn(
+                        "text-[9px] mt-1 opacity-50",
+                        msg.role === 'user' ? "text-right" : "text-left"
+                      )}>
+                        {msg.time}
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+              {loading && (
+                <div className="flex justify-start gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-[#1e2a40] flex items-center justify-center text-gray-400">
+                    <Bot className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="bg-[#161c2a] border border-[#1e2a40] px-3 py-2 rounded-xl rounded-tl-none">
+                    <Loader2 className="w-3 h-3 animate-spin text-[#00d4aa]" />
+                  </div>
+                </div>
+              )}
+              <div ref={bottomRef} />
+            </div>
+
+            <div className="p-4 bg-[#0b0e14] border-t border-[#1e2a40]">
+              <div className="relative">
+                <input
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && sendMessage(input)}
+                  placeholder="Ask about your business stars..."
+                  className="w-full bg-[#161c2a] border border-[#1e2a40] rounded-xl
+                             pl-4 pr-12 py-3 text-xs text-white outline-none
+                             focus:border-[#00d4aa] transition"
+                />
+                <button
+                  onClick={() => sendMessage(input)}
+                  disabled={loading || !input.trim()}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-[#00d4aa] text-[#07090f] p-2 rounded-lg
+                             hover:bg-[#00b894] transition disabled:opacity-40"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
           </motion.div>
