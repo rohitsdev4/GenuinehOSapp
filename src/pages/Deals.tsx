@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { Briefcase, Plus, MoreHorizontal } from 'lucide-react';
+import { Briefcase, Plus, MoreHorizontal, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { formatCurrency } from '@/src/lib/utils';
 import AddDealModal from '@/src/components/modals/AddDealModal';
@@ -8,8 +8,14 @@ import { useFirestore } from '@/src/hooks/useFirestore';
 import type { Deal } from '@/src/types';
 
 export default function Deals() {
-  const { data: deals, loading } = useFirestore<Deal>('deals');
+  const { data: deals, loading, remove: removeDeal } = useFirestore<Deal>('deals');
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const handleDeleteDeal = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this deal?')) {
+      await removeDeal(id);
+    }
+  };
 
   const columns = [
     { id: 'lead', title: 'Lead', color: '#3b82f6' },
@@ -65,8 +71,16 @@ export default function Deals() {
                   <p className="text-xs text-gray-500 font-mono mb-3">{deal.clientName}</p>
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-black text-[#00d4aa]">{formatCurrency(deal.amount)}</span>
-                    <div className="w-6 h-6 rounded-full bg-[#1e2a40] flex items-center justify-center text-[10px] font-bold text-gray-400">
-                      {deal.clientName.charAt(0)}
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => deal.id && handleDeleteDeal(deal.id)}
+                        className="p-1 text-gray-500 hover:text-rose-500 transition"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                      <div className="w-6 h-6 rounded-full bg-[#1e2a40] flex items-center justify-center text-[10px] font-bold text-gray-400">
+                        {deal.clientName.charAt(0)}
+                      </div>
                     </div>
                   </div>
                 </motion.div>

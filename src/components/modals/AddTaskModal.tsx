@@ -7,14 +7,15 @@ import type { Task } from '@/src/types';
 interface AddTaskModalProps {
   isOpen: boolean;
   onClose: () => void;
+  task?: Task | null;
 }
 
-export default function AddTaskModal({ isOpen, onClose }: AddTaskModalProps) {
-  const { add } = useFirestore<Task>('tasks');
-  const [title, setTitle] = useState('');
-  const [priority, setPriority] = useState<'Low' | 'Medium' | 'High'>('Medium');
-  const [dueDate, setDueDate] = useState('');
-  const [notes, setNotes] = useState('');
+export default function AddTaskModal({ isOpen, onClose, task }: AddTaskModalProps) {
+  const { add, update } = useFirestore<Task>('tasks');
+  const [title, setTitle] = useState(task?.title || '');
+  const [priority, setPriority] = useState<'Low' | 'Medium' | 'High'>(task?.priority || 'Medium');
+  const [dueDate, setDueDate] = useState(task?.dueDate || '');
+  const [notes, setNotes] = useState(task?.notes || '');
   const [loading, setLoading] = useState(false);
 
   if (!isOpen) return null;
@@ -25,16 +26,25 @@ export default function AddTaskModal({ isOpen, onClose }: AddTaskModalProps) {
 
     setLoading(true);
     try {
-      await add({
-        title,
-        priority,
-        dueDate,
-        status: 'Pending',
-        notes,
-      });
+      if (task?.id) {
+        await update(task.id, {
+          title,
+          priority,
+          dueDate,
+          notes,
+        });
+      } else {
+        await add({
+          title,
+          priority,
+          dueDate,
+          status: 'Pending',
+          notes,
+        });
+      }
       onClose();
     } catch (error) {
-      console.error('Error adding task:', error);
+      console.error('Error saving task:', error);
     } finally {
       setLoading(false);
     }
@@ -57,7 +67,7 @@ export default function AddTaskModal({ isOpen, onClose }: AddTaskModalProps) {
           className="relative w-full max-w-lg bg-[#111520] border border-[#1e2a40] rounded-2xl shadow-2xl overflow-hidden"
         >
           <div className="flex items-center justify-between p-5 border-b border-[#1e2a40] bg-[#0b0e14]">
-            <h2 className="text-lg font-bold text-white font-['Syne']">Add New Task</h2>
+            <h2 className="text-lg font-bold text-white font-['Syne']">{task ? 'Edit Task' : 'Add New Task'}</h2>
             <button onClick={onClose} className="p-2 text-gray-400 hover:text-white bg-[#161c2a] rounded-lg transition">
               <X className="w-4 h-4" />
             </button>

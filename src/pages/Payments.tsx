@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { CreditCard, Plus, ArrowDownRight, Calendar, User } from 'lucide-react';
+import { CreditCard, Plus, ArrowDownRight, Calendar, User, Trash2 } from 'lucide-react';
 import AddPaymentModal from '@/src/components/modals/AddPaymentModal';
 import { useFirestore } from '@/src/hooks/useFirestore';
 import type { Payment } from '@/src/types';
@@ -8,8 +8,14 @@ import { formatDate } from '@/src/lib/utils';
 import { motion } from 'motion/react';
 
 export default function Payments() {
-  const { data: payments, loading } = useFirestore<Payment>('payments');
+  const { data: payments, loading, remove: removePayment } = useFirestore<Payment>('payments');
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const handleDeletePayment = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this payment?')) {
+      await removePayment(id);
+    }
+  };
 
   if (loading) return <div className="p-8 text-center text-gray-500">Loading payments...</div>;
 
@@ -46,6 +52,7 @@ export default function Payments() {
                   <th className="p-4 font-medium">Site / Project</th>
                   <th className="p-4 font-medium">Category</th>
                   <th className="p-4 font-medium text-right">Amount</th>
+                  <th className="p-4 font-medium text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#1e2a40]">
@@ -78,6 +85,14 @@ export default function Payments() {
                     <td className="p-4 text-right font-bold text-[#00d4aa] flex items-center justify-end gap-1">
                       <ArrowDownRight className="w-3.5 h-3.5" />
                       ₹{payment.amount.toLocaleString('en-IN')}
+                    </td>
+                    <td className="p-4 text-right">
+                      <button 
+                        onClick={() => payment.id && handleDeletePayment(payment.id)}
+                        className="p-2 text-gray-500 hover:text-rose-500 transition"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </td>
                   </motion.tr>
                 ))}

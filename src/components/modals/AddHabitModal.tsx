@@ -7,12 +7,13 @@ import type { Habit } from '@/src/types';
 interface AddHabitModalProps {
   isOpen: boolean;
   onClose: () => void;
+  habit?: Habit | null;
 }
 
-export default function AddHabitModal({ isOpen, onClose }: AddHabitModalProps) {
-  const { add } = useFirestore<Habit>('habits');
-  const [title, setTitle] = useState('');
-  const [frequency, setFrequency] = useState('Daily');
+export default function AddHabitModal({ isOpen, onClose, habit }: AddHabitModalProps) {
+  const { add, update } = useFirestore<Habit>('habits');
+  const [title, setTitle] = useState(habit?.title || '');
+  const [frequency, setFrequency] = useState(habit?.frequency || 'Daily');
   const [loading, setLoading] = useState(false);
 
   if (!isOpen) return null;
@@ -23,14 +24,21 @@ export default function AddHabitModal({ isOpen, onClose }: AddHabitModalProps) {
 
     setLoading(true);
     try {
-      await add({
-        title,
-        frequency,
-        streak: 0,
-      });
+      if (habit?.id) {
+        await update(habit.id, {
+          title,
+          frequency,
+        });
+      } else {
+        await add({
+          title,
+          frequency,
+          streak: 0,
+        });
+      }
       onClose();
     } catch (error) {
-      console.error('Error adding habit:', error);
+      console.error('Error saving habit:', error);
     } finally {
       setLoading(false);
     }
@@ -53,7 +61,7 @@ export default function AddHabitModal({ isOpen, onClose }: AddHabitModalProps) {
           className="relative w-full max-w-lg bg-[#111520] border border-[#1e2a40] rounded-2xl shadow-2xl overflow-hidden"
         >
           <div className="flex items-center justify-between p-5 border-b border-[#1e2a40] bg-[#0b0e14]">
-            <h2 className="text-lg font-bold text-white font-['Syne']">Build New Habit</h2>
+            <h2 className="text-lg font-bold text-white font-['Syne']">{habit ? 'Edit Habit' : 'Build New Habit'}</h2>
             <button onClick={onClose} className="p-2 text-gray-400 hover:text-white bg-[#161c2a] rounded-lg transition">
               <X className="w-4 h-4" />
             </button>

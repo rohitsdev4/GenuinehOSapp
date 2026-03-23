@@ -39,13 +39,13 @@ export default function AIAssistant() {
     }
     return [{
       role: 'ai',
-      text: 'Jai Shree Ram Rohit bhai! 🙏\n\nMain GenuineOS AI hoon — Gemini 3 Flash-Lite se powered. Aapka business advisor!\n\nKya help chahiye aaj?',
+      text: 'Jai Shree Ram Rohit bhai! 🙏\n\nMain GenuineOS AI hoon — Gemini 3.1 Flash-Lite se powered. Aapka business advisor!\n\nKya help chahiye aaj?',
       time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
     }];
   });
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [model, setModel] = useState<GeminiModel>('gemini-3-flash-lite-preview');
+  const [model, setModel] = useState<GeminiModel>('gemini-3.1-flash-lite-preview');
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Get live data for context
@@ -65,7 +65,7 @@ export default function AIAssistant() {
   const clearHistory = () => {
     const initialMsg: Message = {
       role: 'ai',
-      text: 'Jai Shree Ram Rohit bhai! 🙏\n\nMain GenuineOS AI hoon — Gemini 3 Flash-Lite se powered. Aapka business advisor!\n\nKya help chahiye aaj?',
+      text: 'Jai Shree Ram Rohit bhai! 🙏\n\nMain GenuineOS AI hoon — Gemini 3.1 Flash-Lite se powered. Aapka business advisor!\n\nKya help chahiye aaj?',
       time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
     };
     setMessages([initialMsg]);
@@ -180,11 +180,19 @@ export default function AIAssistant() {
         model: res.model,
       }]);
     } catch (err: any) {
+      let errorText = '❌ AI abhi available nahi. Internet check karo.';
+      
+      if (err.message === 'INVALID_API_KEY') {
+        errorText = '❌ Invalid API Key! Settings mein jaakar sahi key enter karein.';
+      } else if (err.message === 'RATE_LIMIT') {
+        errorText = '⚠️ Quota khatam ho gayi. Thodi der baad try karo ya model badlo.';
+      } else if (err.message?.includes('SAFETY')) {
+        errorText = '🛡️ Safety filters ne block kiya. Kuch aur pucho.';
+      }
+
       setMessages(prev => [...prev, {
         role: 'ai',
-        text: err.message?.includes('RATE_LIMIT')
-          ? '⚠️ Quota khatam ho gayi. Thodi der baad try karo ya model badlo.'
-          : '❌ AI abhi available nahi. Internet check karo.',
+        text: errorText,
         time,
       }]);
     } finally {
@@ -205,7 +213,7 @@ export default function AIAssistant() {
               className="bg-[#111520] border border-[#1e2a40] text-xs text-gray-300
                          rounded-lg px-3 py-2 outline-none focus:border-[#00d4aa] transition"
             >
-              <option value="gemini-3-flash-lite-preview">⚡ Flash-Lite (1000/day)</option>
+              <option value="gemini-3.1-flash-lite-preview">⚡ Flash-Lite (1000/day)</option>
               <option value="gemini-3-flash-preview">🔵 Flash (250/day)</option>
               <option value="gemini-3.1-pro-preview">🧠 Pro (100/day)</option>
             </select>

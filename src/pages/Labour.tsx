@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { Users, Plus, Phone, MapPin, IndianRupee } from 'lucide-react';
+import { Users, Plus, Phone, MapPin, IndianRupee, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { formatCurrency } from '@/src/lib/utils';
 import AddWorkerModal from '@/src/components/modals/AddWorkerModal';
@@ -8,8 +8,14 @@ import { useFirestore } from '@/src/hooks/useFirestore';
 import type { LabourWorker } from '@/src/types';
 
 export default function Labour() {
-  const { data: workers, loading, update } = useFirestore<LabourWorker>('workers');
+  const { data: workers, loading, update, remove: removeWorker } = useFirestore<LabourWorker>('workers');
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const handleDeleteWorker = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this worker?')) {
+      await removeWorker(id);
+    }
+  };
 
   const handleMarkPresent = async (worker: LabourWorker) => {
     try {
@@ -73,9 +79,17 @@ export default function Labour() {
                     <h3 className="text-lg font-bold text-white">{worker.name}</h3>
                     <p className="text-sm text-gray-400">Worker</p>
                   </div>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400`}>
-                    Active
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => worker.id && handleDeleteWorker(worker.id)}
+                      className="p-1 text-gray-500 hover:text-rose-500 transition"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400`}>
+                      Active
+                    </span>
+                  </div>
                 </div>
                 
                 <div className="space-y-2">

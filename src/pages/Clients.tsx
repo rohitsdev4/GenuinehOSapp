@@ -1,14 +1,20 @@
 import { useState } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { UserCircle, Plus, Phone, Mail, MapPin } from 'lucide-react';
+import { UserCircle, Plus, Phone, Mail, MapPin, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import AddClientModal from '@/src/components/modals/AddClientModal';
 import { useFirestore } from '@/src/hooks/useFirestore';
 import type { Client } from '@/src/types';
 
 export default function Clients() {
-  const { data: clients, loading } = useFirestore<Client>('clients');
+  const { data: clients, loading, remove: removeClient } = useFirestore<Client>('clients');
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const handleDeleteClient = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this client?')) {
+      await removeClient(id);
+    }
+  };
 
   if (loading) return <div className="p-8 text-center text-gray-500">Loading clients...</div>;
 
@@ -54,6 +60,12 @@ export default function Clients() {
                     <p className="text-sm text-gray-400">{client.company}</p>
                   </div>
                 </div>
+                <button 
+                  onClick={() => client.id && handleDeleteClient(client.id)}
+                  className="p-2 text-gray-500 hover:text-rose-500 transition"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
               
               <div className="space-y-3 pt-4 border-t border-[#1e2a40]">

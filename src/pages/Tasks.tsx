@@ -1,5 +1,5 @@
 import PageHeader from '@/src/components/ui/PageHeader';
-import { CheckSquare, Plus, Flame, Circle, CheckCircle2 } from 'lucide-react';
+import { CheckSquare, Plus, Flame, Circle, CheckCircle2, Edit2, Trash2, MoreVertical } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '@/src/lib/utils';
 import { useState } from 'react';
@@ -9,16 +9,40 @@ import { useFirestore } from '@/src/hooks/useFirestore';
 import type { Task, Habit } from '@/src/types';
 
 export default function Tasks() {
-  const { data: tasks, loading: tasksLoading, update: updateTask } = useFirestore<Task>('tasks');
-  const { data: habits, loading: habitsLoading, update: updateHabit } = useFirestore<Habit>('habits');
+  const { data: tasks, loading: tasksLoading, update: updateTask, remove: removeTask } = useFirestore<Task>('tasks');
+  const { data: habits, loading: habitsLoading, update: updateHabit, remove: removeHabit } = useFirestore<Habit>('habits');
   
   const [activeTab, setActiveTab] = useState<'tasks' | 'habits'>('tasks');
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isHabitModalOpen, setIsHabitModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
 
   const handleToggleTask = async (task: Task) => {
     if (!task.id) return;
     await updateTask(task.id, { status: task.status === 'Completed' ? 'Pending' : 'Completed' });
+  };
+
+  const handleEditTask = (task: Task) => {
+    setEditingTask(task);
+    setIsTaskModalOpen(true);
+  };
+
+  const handleDeleteTask = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this task?')) {
+      await removeTask(id);
+    }
+  };
+
+  const handleEditHabit = (habit: Habit) => {
+    setEditingHabit(habit);
+    setIsHabitModalOpen(true);
+  };
+
+  const handleDeleteHabit = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this habit?')) {
+      await removeHabit(id);
+    }
   };
 
   const isHabitCompletedToday = (lastCompleted?: string) => {
@@ -114,6 +138,20 @@ export default function Tasks() {
                     {task.priority} Priority
                   </span>
                 </div>
+                <div className="flex items-center gap-1">
+                  <button 
+                    onClick={() => handleEditTask(task)}
+                    className="p-2 text-gray-500 hover:text-white transition"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button 
+                    onClick={() => task.id && handleDeleteTask(task.id)}
+                    className="p-2 text-gray-500 hover:text-rose-500 transition"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </motion.div>
             ))
           )}
@@ -142,15 +180,31 @@ export default function Tasks() {
                       <span className="text-xs font-bold">{habit.streak} Day Streak</span>
                     </div>
                   </div>
-                  <button 
-                    onClick={() => handleToggleHabit(habit)}
-                    className={cn(
-                      "w-12 h-12 rounded-full flex items-center justify-center transition-all cursor-pointer",
-                      completedToday ? "bg-[#00d4aa] text-[#07090f] shadow-[0_0_15px_rgba(0,212,170,0.3)]" : "bg-[#1e2a40] text-gray-500 hover:bg-[#2a3a5a]"
-                    )}
-                  >
-                    <CheckSquare className="w-6 h-6" />
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <div className="flex flex-col gap-1">
+                      <button 
+                        onClick={() => handleEditHabit(habit)}
+                        className="p-1.5 text-gray-500 hover:text-white transition"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button 
+                        onClick={() => habit.id && handleDeleteHabit(habit.id)}
+                        className="p-1.5 text-gray-500 hover:text-rose-500 transition"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <button 
+                      onClick={() => handleToggleHabit(habit)}
+                      className={cn(
+                        "w-12 h-12 rounded-full flex items-center justify-center transition-all cursor-pointer",
+                        completedToday ? "bg-[#00d4aa] text-[#07090f] shadow-[0_0_15px_rgba(0,212,170,0.3)]" : "bg-[#1e2a40] text-gray-500 hover:bg-[#2a3a5a]"
+                      )}
+                    >
+                      <CheckSquare className="w-6 h-6" />
+                    </button>
+                  </div>
                 </motion.div>
               );
             })
@@ -159,11 +213,25 @@ export default function Tasks() {
       )}
 
       {isTaskModalOpen && (
-        <AddTaskModal isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} />
+        <AddTaskModal 
+          isOpen={isTaskModalOpen} 
+          onClose={() => {
+            setIsTaskModalOpen(false);
+            setEditingTask(null);
+          }} 
+          task={editingTask}
+        />
       )}
       
       {isHabitModalOpen && (
-        <AddHabitModal isOpen={isHabitModalOpen} onClose={() => setIsHabitModalOpen(false)} />
+        <AddHabitModal 
+          isOpen={isHabitModalOpen} 
+          onClose={() => {
+            setIsHabitModalOpen(false);
+            setEditingHabit(null);
+          }} 
+          habit={editingHabit}
+        />
       )}
     </div>
   );

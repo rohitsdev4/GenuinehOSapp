@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { Receipt, Plus, Search, Filter, ArrowDownRight, User } from 'lucide-react';
+import { Receipt, Plus, Search, Filter, ArrowDownRight, User, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { formatCurrency, formatDate } from '@/src/lib/utils';
 import AddExpenseModal from '@/src/components/modals/AddExpenseModal';
@@ -8,9 +8,15 @@ import { useFirestore } from '@/src/hooks/useFirestore';
 import type { Expense } from '@/src/types';
 
 export default function Expenses() {
-  const { data: expenses, loading } = useFirestore<Expense>('expenses');
+  const { data: expenses, loading, remove: removeExpense } = useFirestore<Expense>('expenses');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+
+  const handleDeleteExpense = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this expense?')) {
+      await removeExpense(id);
+    }
+  };
 
   const filteredExpenses = expenses.filter(expense => 
     (expense.notes?.toLowerCase().includes(searchTerm.toLowerCase()) || '') ||
@@ -63,12 +69,13 @@ export default function Expenses() {
                 <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Category</th>
                 <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Site</th>
                 <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Amount</th>
+                <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredExpenses.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-gray-500">
+                  <td colSpan={6} className="p-8 text-center text-gray-500">
                     No expenses found.
                   </td>
                 </tr>
@@ -98,6 +105,14 @@ export default function Expenses() {
                     <td className="p-4 text-right font-mono font-bold text-rose-400 flex items-center justify-end gap-2">
                       <ArrowDownRight className="w-4 h-4 opacity-50" />
                       {formatCurrency(expense.amount)}
+                    </td>
+                    <td className="p-4 text-right">
+                      <button 
+                        onClick={() => expense.id && handleDeleteExpense(expense.id)}
+                        className="p-2 text-gray-500 hover:text-rose-500 transition"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </td>
                   </motion.tr>
                 ))

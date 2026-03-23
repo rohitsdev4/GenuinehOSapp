@@ -1,16 +1,33 @@
-import { X, MapPin, Calendar, Percent, Users, AlertTriangle } from 'lucide-react';
+import { X, MapPin, Calendar, Percent, Users, AlertTriangle, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import type { Site } from '@/src/types';
 import { formatDate } from '@/src/lib/utils';
+import { useState } from 'react';
 
 interface SiteDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
   site: Site;
+  onDelete: (id: string) => Promise<void>;
 }
 
-export default function SiteDetailsModal({ isOpen, onClose, site }: SiteDetailsModalProps) {
+export default function SiteDetailsModal({ isOpen, onClose, site, onDelete }: SiteDetailsModalProps) {
+  const [isDeleting, setIsDeleting] = useState(false);
+
   if (!isOpen) return null;
+
+  const handleDelete = async () => {
+    if (!site.id || !window.confirm('Are you sure you want to delete this site? This action cannot be undone.')) return;
+    setIsDeleting(true);
+    try {
+      await onDelete(site.id);
+      onClose();
+    } catch (error) {
+      console.error('Error deleting site:', error);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -99,6 +116,23 @@ export default function SiteDetailsModal({ isOpen, onClose, site }: SiteDetailsM
                 </div>
               </div>
             </div>
+          </div>
+
+          <div className="p-5 border-t border-[#1e2a40] bg-[#0b0e14] flex justify-between items-center">
+            <button 
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-rose-500 hover:bg-rose-500/10 transition disabled:opacity-50"
+            >
+              <Trash2 className="w-4 h-4" />
+              {isDeleting ? 'Deleting...' : 'Delete Site'}
+            </button>
+            <button 
+              onClick={onClose}
+              className="px-6 py-2 rounded-xl font-bold text-gray-400 hover:text-white hover:bg-[#161c2a] transition"
+            >
+              Close
+            </button>
           </div>
         </motion.div>
       </div>

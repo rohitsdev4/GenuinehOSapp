@@ -1,14 +1,20 @@
 import { useState } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { Target, Plus, CheckCircle2 } from 'lucide-react';
+import { Target, Plus, CheckCircle2, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import AddGoalModal from '@/src/components/modals/AddGoalModal';
 import { useFirestore } from '@/src/hooks/useFirestore';
 import type { Goal } from '@/src/types';
 
 export default function Goals() {
-  const { data: goals, loading } = useFirestore<Goal>('goals');
+  const { data: goals, loading, remove: removeGoal } = useFirestore<Goal>('goals');
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const handleDeleteGoal = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this goal?')) {
+      await removeGoal(id);
+    }
+  };
 
   if (loading) return <div className="p-8 text-center text-gray-500">Loading goals...</div>;
 
@@ -53,12 +59,20 @@ export default function Goals() {
                   <div className="w-10 h-10 rounded-full bg-[#1e2a40] flex items-center justify-center text-[#00d4aa]">
                     <Target className="w-5 h-5" />
                   </div>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
-                    goal.status === 'Active' ? 'bg-emerald-500/10 text-emerald-400' : 
-                    goal.status === 'Achieved' ? 'bg-blue-500/10 text-blue-400' : 'bg-rose-500/10 text-rose-400'
-                  }`}>
-                    {goal.status}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => goal.id && handleDeleteGoal(goal.id)}
+                      className="p-1 text-gray-500 hover:text-rose-500 transition"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                      goal.status === 'Active' ? 'bg-emerald-500/10 text-emerald-400' : 
+                      goal.status === 'Achieved' ? 'bg-blue-500/10 text-blue-400' : 'bg-rose-500/10 text-rose-400'
+                    }`}>
+                      {goal.status}
+                    </span>
+                  </div>
                 </div>
                 
                 <h3 className="text-lg font-bold text-white mb-2 pr-8">{goal.title}</h3>

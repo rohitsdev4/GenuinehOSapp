@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { HandCoins, Plus, AlertTriangle, Phone } from 'lucide-react';
+import { HandCoins, Plus, AlertTriangle, Phone, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { formatCurrency } from '@/src/lib/utils';
 import AddReceivableModal from '@/src/components/modals/AddReceivableModal';
@@ -8,13 +8,22 @@ import { useFirestore } from '@/src/hooks/useFirestore';
 import type { Receivable } from '@/src/types';
 
 export default function Receivables() {
-  const { data: receivables, loading } = useFirestore<Receivable>('receivables');
+  const { data: receivables, loading, remove: removeReceivable } = useFirestore<Receivable>('receivables');
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const handleDeleteReceivable = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this receivable?')) {
+      await removeReceivable(id);
+    }
+  };
 
   if (loading) return <div className="p-8 text-center text-gray-500">Loading receivables...</div>;
 
   const calculateDaysOverdue = (dueDate: string) => {
+    if (!dueDate) return 0;
     const due = new Date(dueDate);
+    if (isNaN(due.getTime())) return 0;
+    
     const today = new Date();
     const diffTime = Math.abs(today.getTime() - due.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -91,9 +100,17 @@ export default function Receivables() {
                     <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1">Amount Due</p>
                     <p className="text-xl font-black text-[#00d4aa]">{formatCurrency(rec.amount - (rec.amountCollected || 0))}</p>
                   </div>
-                  <button className="w-10 h-10 rounded-full bg-[#1e2a40] flex items-center justify-center text-gray-400 hover:text-white hover:bg-[#2a3a5a] transition shrink-0">
-                    <Phone className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => rec.id && handleDeleteReceivable(rec.id)}
+                      className="w-10 h-10 rounded-full bg-[#1e2a40] flex items-center justify-center text-gray-500 hover:text-rose-500 transition shrink-0"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                    <button className="w-10 h-10 rounded-full bg-[#1e2a40] flex items-center justify-center text-gray-400 hover:text-white hover:bg-[#2a3a5a] transition shrink-0">
+                      <Phone className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </motion.div>
             );

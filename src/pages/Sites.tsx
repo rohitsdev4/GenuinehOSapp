@@ -2,13 +2,14 @@ import { useState } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
 import { MapPin, Plus, MoreVertical, Calendar, Hammer } from 'lucide-react';
 import { motion } from 'motion/react';
+import { formatDate } from '@/src/lib/utils';
 import AddSiteModal from '@/src/components/modals/AddSiteModal';
 import SiteDetailsModal from '@/src/components/modals/SiteDetailsModal';
 import { useFirestore } from '@/src/hooks/useFirestore';
 import type { Site } from '@/src/types';
 
 export default function Sites() {
-  const { data: sites, loading } = useFirestore<Site>('sites');
+  const { data: sites, loading, remove: removeSite } = useFirestore<Site>('sites');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedSite, setSelectedSite] = useState<Site | null>(null);
 
@@ -68,7 +69,7 @@ export default function Sites() {
             <div className="flex items-center gap-4 pt-4 border-t border-[#1e2a40]">
               <div className="flex items-center gap-2 text-xs text-gray-400 font-mono">
                 <Calendar className="w-3.5 h-3.5" />
-                {site.estimatedEndDate ? new Date(site.estimatedEndDate).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : 'TBD'}
+                {formatDate(site.estimatedEndDate)}
               </div>
               <div className="flex items-center gap-2 text-xs text-gray-400 font-mono">
                 <Hammer className="w-3.5 h-3.5" />
@@ -88,6 +89,10 @@ export default function Sites() {
           isOpen={!!selectedSite} 
           onClose={() => setSelectedSite(null)} 
           site={selectedSite} 
+          onDelete={async (id) => {
+            await removeSite(id);
+            setSelectedSite(null);
+          }}
         />
       )}
     </div>

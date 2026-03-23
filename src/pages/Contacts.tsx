@@ -1,15 +1,21 @@
 import { useState } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { Contact, Plus, Search, Phone, Mail } from 'lucide-react';
+import { Contact, Plus, Search, Phone, Mail, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import AddContactModal from '@/src/components/modals/AddContactModal';
 import { useFirestore } from '@/src/hooks/useFirestore';
 import type { Contact as ContactType } from '@/src/types';
 
 export default function Contacts() {
-  const { data: contacts, loading } = useFirestore<ContactType>('contacts');
+  const { data: contacts, loading, remove: removeContact } = useFirestore<ContactType>('contacts');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  const handleDeleteContact = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this contact?')) {
+      await removeContact(id);
+    }
+  };
 
   const filteredContacts = contacts.filter(contact => 
     contact.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -87,6 +93,12 @@ export default function Contacts() {
                       <span className="sm:hidden">{contact.phone}</span>
                     </a>
                   )}
+                  <button 
+                    onClick={() => contact.id && handleDeleteContact(contact.id)}
+                    className="p-2 text-gray-500 hover:text-rose-500 transition"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
               </motion.div>
             ))

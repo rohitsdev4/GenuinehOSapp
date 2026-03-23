@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { Settings as SettingsIcon, LogOut, Shield, Moon, Key, Save, Globe, RefreshCw } from 'lucide-react';
+import { Settings as SettingsIcon, LogOut, Shield, Moon, Key, Save, Globe, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
-import { useFirestore } from '@/src/hooks/useFirestore';
+import { testGeminiConnection } from '@/src/lib/gemini';
 
 export default function Settings() {
   const { user, logout } = useAuth();
@@ -12,32 +12,120 @@ export default function Settings() {
   const [isSaved, setIsSaved] = useState(false);
   const [isSheetSaved, setIsSheetSaved] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isTestingGemini, setIsTestingGemini] = useState(false);
+  const [geminiStatus, setGeminiStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [isTestingSheet, setIsTestingSheet] = useState(false);
+  const [sheetStatus, setSheetStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   useEffect(() => {
     const savedKey = localStorage.getItem('gemini_api_key');
-    if (savedKey) setApiKey(savedKey);
+    if (savedKey) {
+      setApiKey(savedKey);
+      testGeminiConnection(savedKey).then(isValid => {
+        if (isValid) setGeminiStatus('success');
+        else setGeminiStatus('error');
+      });
+    }
     
     const savedSheetId = localStorage.getItem('google_sheet_id');
-    if (savedSheetId) setSheetId(savedSheetId);
-
     const savedSheetApiKey = localStorage.getItem('google_sheet_api_key');
-    if (savedSheetApiKey) setSheetApiKey(savedSheetApiKey);
+    
+    if (savedSheetId !== null) setSheetId(savedSheetId);
+    if (savedSheetApiKey !== null) setSheetApiKey(savedSheetApiKey);
+
+    if (savedSheetId && savedSheetApiKey) {
+      fetch(`https://sheets.googleapis.com/v4/spreadsheets/${savedSheetId}?key=${savedSheetApiKey}`)
+        .then(res => {
+          if (res.ok) setSheetStatus('success');
+        });
+    }
   }, []);
 
-  const handleSaveKey = () => {
-    localStorage.setItem('gemini_api_key', apiKey);
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 2000);
+  const handleSaveKey = async () => {
+    setIsTestingGemini(true);
+    setGeminiStatus('idle');
+    
+    // If empty, just save and use default
+    if (!apiKey.trim()) {
+      localStorage.removeItem('gemini_api_key');
+      setIsSaved(true);
+      setGeminiStatus('idle');
+      setTimeout(() => setIsSaved(false), 2000);
+      setIsTestingGemini(false);
+      return;
+    }
+
+    // Test the key before saving
+    try {
+      const isValid = await testGeminiConnection(apiKey);
+      
+      if (isValid) {
+        localStorage.setItem('gemini_api_key', apiKey);
+        setIsSaved(true);
+        setGeminiStatus('success');
+        setTimeout(() => setIsSaved(false), 2000);
+      } else {
+        setGeminiStatus('error');
+        // Still allow saving if user insists? No, better to keep it safe.
+        // But maybe the test failed due to network.
+        if (window.confirm('API test failed. This could be due to an invalid key or network issues. Do you want to save it anyway?')) {
+          localStorage.setItem('gemini_api_key', apiKey);
+          setIsSaved(true);
+          setTimeout(() => setIsSaved(false), 2000);
+        }
+      }
+    } catch (err) {
+      setGeminiStatus('error');
+      alert('Error testing connection. Please check your internet.');
+    } finally {
+      setIsTestingGemini(false);
+    }
   };
 
-  const handleSaveSheetConfig = () => {
-    localStorage.setItem('google_sheet_id', sheetId);
-    localStorage.setItem('google_sheet_api_key', sheetApiKey);
-    setIsSheetSaved(true);
-    setTimeout(() => setIsSheetSaved(false), 2000);
-  };
+  const handleSaveSheetConfig = async () => {
+    setIsTestingSheet(true);
+    setSheetStatus('idle');
 
-  const isSheetConnected = sheetId.length > 10 && sheetApiKey.length > 10;
+    // Basic validation
+    if (!sheetId || !sheetApiKey) {
+      setSheetStatus('error');
+      alert('Please enter both Sheet ID and API Key.');
+      setIsTestingSheet(false);
+      return;
+    }
+
+    // Attempt to fetch sheet metadata as a test
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+      const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?key=${sheetApiKey}`, {
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        localStorage.setItem('google_sheet_id', sheetId);
+        localStorage.setItem('google_sheet_api_key', sheetApiKey);
+        setIsSheetSaved(true);
+        setSheetStatus('success');
+        setTimeout(() => setIsSheetSaved(false), 2000);
+      } else {
+        const error = await response.json();
+        throw new Error(error.error?.message || 'Failed to connect to Google Sheets');
+      }
+    } catch (err: any) {
+      setSheetStatus('error');
+      if (err.name === 'AbortError') {
+        alert('Sheet Connection Timeout: The request took too long. Please check your internet.');
+      } else {
+        alert(`Sheet Connection Failed: ${err.message}`);
+      }
+    } finally {
+      setIsTestingSheet(false);
+    }
+  };
 
   const handleSync = () => {
     if (!sheetId) {
@@ -111,12 +199,29 @@ export default function Settings() {
                 />
                 <button
                   onClick={handleSaveKey}
-                  className="bg-[#00d4aa] text-[#07090f] px-4 py-2 rounded-xl font-bold flex items-center gap-2 hover:bg-[#00b894] transition cursor-pointer"
+                  disabled={isTestingGemini}
+                  className="bg-[#00d4aa] text-[#07090f] px-4 py-2 rounded-xl font-bold flex items-center gap-2 hover:bg-[#00b894] transition cursor-pointer disabled:opacity-50"
                 >
-                  <Save className="w-4 h-4" />
-                  {isSaved ? 'Saved!' : 'Save'}
+                  {isTestingGemini ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  {isSaved ? 'Saved!' : isTestingGemini ? 'Testing...' : 'Save & Test'}
                 </button>
               </div>
+              {geminiStatus === 'success' && (
+                <div className="flex items-center gap-2 text-emerald-400 text-xs mt-1">
+                  <CheckCircle2 className="w-3 h-3" />
+                  <span>Connection established successfully!</span>
+                </div>
+              )}
+              {geminiStatus === 'error' && (
+                <div className="flex items-center gap-2 text-rose-400 text-xs mt-1">
+                  <AlertCircle className="w-3 h-3" />
+                  <span>Invalid API Key. Please verify.</span>
+                </div>
+              )}
               <p className="text-xs text-gray-500">
                 Get your free API key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-[#00d4aa] hover:underline">Google AI Studio</a>. This key is stored locally on your device.
               </p>
@@ -130,7 +235,7 @@ export default function Settings() {
               <Globe className="w-4 h-4 text-[#00d4aa]" />
               <h3 className="font-bold text-white">Google Sheets Integration</h3>
             </div>
-            {isSheetConnected && (
+            {sheetStatus === 'success' && (
               <div className="flex items-center gap-2 bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-emerald-500/20">
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 Connected
@@ -145,7 +250,7 @@ export default function Settings() {
               </div>
               <button
                 onClick={handleSync}
-                disabled={isSyncing || !isSheetConnected}
+                disabled={isSyncing || sheetStatus !== 'success'}
                 className="bg-[#1e2a40] text-white px-4 py-2 rounded-xl font-bold hover:bg-[#2a3b5c] transition cursor-pointer text-sm flex items-center gap-2 disabled:opacity-50"
               >
                 <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
@@ -176,13 +281,32 @@ export default function Settings() {
               </div>
             </div>
 
-            <div className="flex justify-end">
+            <div className="flex justify-between items-center">
+              <div className="flex gap-4">
+                {sheetStatus === 'success' && (
+                  <div className="flex items-center gap-2 text-emerald-400 text-xs">
+                    <CheckCircle2 className="w-3 h-3" />
+                    <span>Sheet connected!</span>
+                  </div>
+                )}
+                {sheetStatus === 'error' && (
+                  <div className="flex items-center gap-2 text-rose-400 text-xs">
+                    <AlertCircle className="w-3 h-3" />
+                    <span>Connection failed.</span>
+                  </div>
+                )}
+              </div>
               <button
                 onClick={handleSaveSheetConfig}
-                className="bg-[#00d4aa] text-[#07090f] px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-[#00b894] transition cursor-pointer"
+                disabled={isTestingSheet}
+                className="bg-[#00d4aa] text-[#07090f] px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-[#00b894] transition cursor-pointer disabled:opacity-50"
               >
-                <Save className="w-4 h-4" />
-                {isSheetSaved ? 'Config Saved!' : 'Save Configuration'}
+                {isTestingSheet ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
+                {isSheetSaved ? 'Config Saved!' : isTestingSheet ? 'Testing...' : 'Save & Test Connection'}
               </button>
             </div>
 

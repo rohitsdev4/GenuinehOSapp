@@ -3,7 +3,7 @@ import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 const API_KEY = process.env.GEMINI_API_KEY;
 
 export type GeminiModel =
-  | 'gemini-3-flash-lite-preview'
+  | 'gemini-3.1-flash-lite-preview'
   | 'gemini-3-flash-preview'
   | 'gemini-3.1-pro-preview'
 
@@ -103,7 +103,7 @@ const addReceivableDeclaration: FunctionDeclaration = {
 
 export async function callGemini({
   prompt,
-  model = 'gemini-3-flash-lite-preview',
+  model = 'gemini-3.1-flash-lite-preview',
   context = '',
   maxTokens = 600,
   history = [],
@@ -125,6 +125,7 @@ export async function callGemini({
   fullPrompt += `User Query: ${prompt}`;
 
   try {
+    const ai = new GoogleGenAI({ apiKey: localKey || API_KEY || '' });
     const response = await ai.models.generateContent({
       model: model,
       contents: fullPrompt,
@@ -147,9 +148,32 @@ export async function callGemini({
     const functionCalls = response.functionCalls;
     
     return { text, model, cached: false, functionCalls };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Gemini API Error:", error);
+    // Extract more meaningful error message
+    const errorMessage = error.message || String(error);
+    if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('invalid API key')) {
+      throw new Error('INVALID_API_KEY');
+    }
+    if (errorMessage.includes('429') || errorMessage.includes('quota') || errorMessage.includes('RATE_LIMIT')) {
+      throw new Error('RATE_LIMIT');
+    }
     throw error;
+  }
+}
+
+export async function testGeminiConnection(key: string): Promise<boolean> {
+  try {
+    const ai = new GoogleGenAI({ apiKey: key });
+    await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: 'Hi',
+      config: { maxOutputTokens: 5 }
+    });
+    return true;
+  } catch (error) {
+    console.error("Gemini Test Connection Error:", error);
+    return false;
   }
 }
 
