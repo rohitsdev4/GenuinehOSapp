@@ -388,9 +388,20 @@ export default function Settings() {
           party: entry.partyName || '',
           user: entry.partner || ''
         };
-        existingKeys.add(createSourceRowKey(fallback));
+
+        // When calculating fallback keys for legacy entries without sourceRowKey,
+        // increment suffix to avoid colliding identical legacy rows into a single key.
+        let baseKey = createSourceRowKey(fallback);
+        let finalKey = baseKey;
+        let suffix = 1;
+        while (existingKeys.has(finalKey)) {
+          finalKey = `${baseKey}_${suffix}`;
+          suffix++;
+        }
+        existingKeys.add(finalKey);
       });
       
+      const sessionKeys = new Set<string>();
 
       for (const { row, forceType } of taggedRows) {
         // Apply site alias
@@ -403,7 +414,17 @@ export default function Settings() {
         }
 
         const normalizedType = row.type.trim().toLowerCase();
-        const sourceRowKey = createSourceRowKey(row);
+
+        let baseKey = createSourceRowKey(row);
+        let sourceRowKey = baseKey;
+        let suffix = 1;
+        // Calculate the next available key for this identical row in the current sheet sync session.
+        while (sessionKeys.has(sourceRowKey)) {
+          sourceRowKey = `${baseKey}_${suffix}`;
+          suffix++;
+        }
+        sessionKeys.add(sourceRowKey);
+
         if (existingKeys.has(sourceRowKey)) { skippedCount++; continue; }
 
         const entry = { date: row.date, amount: row.amount, category: row.category || 'Other', notes: row.description || '', labourName: row.labour || '', partyName: row.party || '', siteId: row.site || '', partner: row.user || '', sourceRowKey };
