@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { Settings as SettingsIcon, LogOut, Shield, Moon, Key, Save, Globe, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Settings as SettingsIcon, LogOut, Shield, Moon, Key, Save, Globe, RefreshCw, CheckCircle2, AlertCircle, Upload } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
 import { testGeminiConnection } from '@/src/lib/gemini';
+import { useFirestore } from '@/src/hooks/useFirestore';
+import { serverTimestamp } from 'firebase/firestore';
 
 export default function Settings() {
   const { user, logout } = useAuth();
@@ -16,6 +18,10 @@ export default function Settings() {
   const [geminiStatus, setGeminiStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [isTestingSheet, setIsTestingSheet] = useState(false);
   const [sheetStatus, setSheetStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { add: addExpense } = useFirestore('expenses');
+  const { add: addPayment } = useFirestore('payments');
 
   useEffect(() => {
     const savedKey = localStorage.getItem('gemini_api_key');
@@ -40,6 +46,49 @@ export default function Settings() {
         });
     }
   }, []);
+
+  const handleCSVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsSyncing(true);
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const text = event.target?.result as string;
+      const lines = text.split('\n');
+      const headers = lines[0].split(',');
+
+      for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
+        const values = lines[i].split(',');
+        const entry: any = {};
+        headers.forEach((header, index) => {
+          entry[header.trim()] = values[index]?.trim();
+        });
+
+        // Map CSV to Firestore
+        const data = {
+          date: entry.Date,
+          amount: parseFloat(entry.Amount) || 0,
+          category: entry.Category,
+          notes: entry.Discription,
+          partyName: entry.Party,
+          siteId: entry.Site,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
+
+        if (entry.Type === 'Expense') {
+          await addExpense(data);
+        } else if (entry.Type === 'Payment Received') {
+          await addPayment(data);
+        }
+      }
+      setIsSyncing(false);
+      alert('CSV data synced successfully!');
+    };
+    reader.readAsText(file);
+  };
 
   const handleSaveKey = async () => {
     setIsTestingGemini(true);
@@ -127,17 +176,43 @@ export default function Settings() {
     }
   };
 
-  const handleSync = () => {
+  const handleSync = async () => {
     if (!sheetId) {
       alert('Please enter a Google Sheet ID first.');
       return;
     }
     setIsSyncing(true);
-    // Simulate sync
-    setTimeout(() => {
+    
+    try {
+      const data = await fetchFromSheet('A2:J100'); // Assuming header is row 1
+      if (!data) throw new Error('Failed to fetch data');
+
+      for (const row of data) {
+        const [date, type, amount, category, description, labour, site, party, user, chatId] = row;
+        const entry = {
+          date,
+          amount: parseFloat(amount) || 0,
+          category,
+          notes: description,
+          partyName: party,
+          siteId: site,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
+
+        if (type === 'Expense') {
+          await addExpense(entry);
+        } else if (type === 'Payment Received') {
+          await addPayment(entry);
+        }
+      }
+      alert('Sync completed successfully!');
+    } catch (error) {
+      console.error('Sync error:', error);
+      alert('Sync failed. Please check your configuration.');
+    } finally {
       setIsSyncing(false);
-      alert('Sync completed successfully! (Simulated)');
-    }, 2000);
+    }
   };
 
   const sections = [
@@ -248,14 +323,24 @@ export default function Settings() {
                 <p className="text-sm font-bold text-white">Sync Payments & Expenses</p>
                 <p className="text-xs text-gray-400 mt-1">Automatically sync data between GenuineOS and your Google Sheet.</p>
               </div>
-              <button
-                onClick={handleSync}
-                disabled={isSyncing || sheetStatus !== 'success'}
-                className="bg-[#1e2a40] text-white px-4 py-2 rounded-xl font-bold hover:bg-[#2a3b5c] transition cursor-pointer text-sm flex items-center gap-2 disabled:opacity-50"
-              >
-                <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                {isSyncing ? 'Syncing...' : 'Sync Now'}
-              </button>
+              <div className="flex gap-2">
+                <input type="file" accept=".csv" ref={fileInputRef} onChange={handleCSVUpload} className="hidden" />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="bg-[#1e2a40] text-white px-4 py-2 rounded-xl font-bold hover:bg-[#2a3b5c] transition cursor-pointer text-sm flex items-center gap-2"
+                >
+                  <Upload className="w-4 h-4" />
+                  Upload CSV
+                </button>
+                <button
+                  onClick={handleSync}
+                  disabled={isSyncing || sheetStatus !== 'success'}
+                  className="bg-[#1e2a40] text-white px-4 py-2 rounded-xl font-bold hover:bg-[#2a3b5c] transition cursor-pointer text-sm flex items-center gap-2 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                  {isSyncing ? 'Syncing...' : 'Sync Now'}
+                </button>
+              </div>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-[#1e2a40]">
