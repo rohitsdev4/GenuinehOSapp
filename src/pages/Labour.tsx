@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { Users, Plus, Phone, IndianRupee, Trash2, Edit2 } from 'lucide-react';
+import { Users, Plus, Phone, IndianRupee, Trash2, Edit2, Clock, Briefcase } from 'lucide-react';
 import { motion } from 'motion/react';
 import { formatCurrency } from '@/src/lib/utils';
 import AddWorkerModal from '@/src/components/modals/AddWorkerModal';
@@ -33,12 +33,43 @@ export default function Labour() {
 
   const handleMarkPresent = async (worker: LabourWorker) => {
     try {
+      const increment = worker.paymentType === 'Monthly' 
+        ? (worker.monthlyWage || 0) / 30 
+        : worker.dailyWage;
+        
       await update(worker.id!, {
-        balance: (worker.balance || 0) + worker.dailyWage,
+        balance: (worker.balance || 0) + increment,
         updatedAt: new Date().toISOString(),
       });
     } catch (error) {
       console.error('Error marking present:', error);
+    }
+  };
+
+  const handleAddMonthlySalary = async (worker: LabourWorker) => {
+    if (worker.paymentType !== 'Monthly' || !worker.monthlyWage) return;
+    try {
+      await update(worker.id!, {
+        balance: (worker.balance || 0) + worker.monthlyWage,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error('Error adding monthly salary:', error);
+    }
+  };
+
+  const handleAddWorkPayment = async (worker: LabourWorker) => {
+    const amountStr = prompt(`Enter work payment amount for ${worker.name}:`);
+    const amount = Number(amountStr);
+    if (isNaN(amount) || amount <= 0) return;
+    
+    try {
+      await update(worker.id!, {
+        balance: (worker.balance || 0) + amount,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error('Error adding work payment:', error);
     }
   };
 
@@ -90,7 +121,15 @@ export default function Labour() {
               <div className="p-5 border-b border-[#1e2a40]">
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <h3 className="text-lg font-bold text-white">{worker.name}</h3>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="text-lg font-bold text-white">{worker.name}</h3>
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-black uppercase tracking-tighter flex items-center gap-1 ${
+                        worker.paymentType === 'Monthly' ? 'bg-blue-500/20 text-blue-400' : 'bg-amber-500/20 text-amber-400'
+                      }`}>
+                        {worker.paymentType === 'Monthly' ? <Clock className="w-2.5 h-2.5" /> : <Briefcase className="w-2.5 h-2.5" />}
+                        {worker.paymentType || 'Contract'}
+                      </span>
+                    </div>
                     <p className="text-sm text-gray-400">Worker</p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -121,7 +160,9 @@ export default function Labour() {
                   </div>
                   <div className="flex items-center gap-2 text-sm text-gray-400">
                     <IndianRupee className="w-4 h-4 text-gray-500" />
-                    {formatCurrency(worker.dailyWage)} / day
+                    {worker.paymentType === 'Monthly' 
+                      ? `${formatCurrency(worker.monthlyWage || 0)} / month` 
+                      : `${formatCurrency(worker.dailyWage)} / day`}
                   </div>
                 </div>
               </div>
@@ -134,23 +175,42 @@ export default function Labour() {
                   </p>
                 </div>
                 
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => handleMarkPresent(worker)}
-                    className="flex-1 bg-[#1e2a40] text-white py-2 rounded-xl font-bold text-sm hover:bg-[#2a3a5a] transition"
-                  >
-                    Mark Present
-                  </button>
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => handleMarkPresent(worker)}
+                      className="flex-1 bg-[#1e2a40] text-white py-2 rounded-xl font-bold text-xs hover:bg-[#2a3a5a] transition flex items-center justify-center gap-1"
+                    >
+                      {worker.paymentType === 'Monthly' ? 'Mark Day' : 'Mark Present'}
+                    </button>
+                    
+                    {worker.paymentType === 'Monthly' ? (
+                      <button 
+                        onClick={() => handleAddMonthlySalary(worker)}
+                        className="flex-1 bg-blue-500/10 text-blue-400 border border-blue-500/20 py-2 rounded-xl font-bold text-xs hover:bg-blue-500/20 transition"
+                      >
+                        Add Month
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={() => handleAddWorkPayment(worker)}
+                        className="flex-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 py-2 rounded-xl font-bold text-xs hover:bg-amber-500/20 transition"
+                      >
+                        Add Work
+                      </button>
+                    )}
+                  </div>
+                  
                   <button 
                     onClick={() => handlePayNow(worker)}
                     disabled={worker.balance <= 0}
-                    className={`flex-1 py-2 rounded-xl font-bold text-sm transition ${
+                    className={`w-full py-2 rounded-xl font-bold text-sm transition ${
                       worker.balance > 0 
                         ? 'bg-[#00d4aa] text-[#07090f] hover:bg-[#00b894] shadow-[0_0_10px_rgba(0,212,170,0.2)]' 
                         : 'bg-[#1e2a40] text-gray-500 cursor-not-allowed'
                     }`}
                   >
-                    Pay Now
+                    Set Balance to 0 (Paid)
                   </button>
                 </div>
               </div>

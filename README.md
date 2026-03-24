@@ -1,187 +1,66 @@
-# Expense Manager
+# GenuineOS — Smart Construction & Finance Ecosystem
 
-Short description of your project.  
-Example: A web app to track income, expenses, budgets, and spending insights.
+GenuineOS is a high-performance, glassmorphism-designed PWA (Progressive Web App) built for modern project managers and construction entrepreneurs. It unifies financial tracking, site management, and labour payroll into a single, real-time interface synchronized with Google Sheets.
 
-## Table of Contents
+## 🚀 Core Modules
 
-- [Features](#features)
-- [Tech Stack](#tech-stack)
-- [Project Structure](#project-structure)
-- [Getting Started](#getting-started)
-- [Environment Variables](#environment-variables)
-- [Available Scripts](#available-scripts)
-- [Usage](#usage)
-- [Testing](#testing)
-- [Deployment](#deployment)
-- [Contributing](#contributing)
-- [Troubleshooting](#troubleshooting)
-- [License](#license)
-- [Contact](#contact)
+### 1. Dynamic Dashboard
+- **AI Daily Brief**: Automated summaries of critical receivables, site progress, and pending tasks.
+- **Financial Visuals**: Interactive trends (Income vs Expenses) using Recharts.
+- **Urgent Alerts**: Integration with astronomical/business windows for optimal decision-making.
 
-## Features
+### 2. Smart Finance (Sync-First)
+- **Google Sheets Integration**: bi-directional sync with dedicated tabs for Payments & Expenses.
+- **Incremental Sync**: Only fetches new rows to minimize API usage and maximize speed.
+- **Alias Mapping**: Auto-resolve site name mismatches (e.g., "Ludhiana-1" → "Ludhiana") using custom alias rules.
 
-- Track income and expenses
-- Categorize transactions
-- View totals and summaries
-- Set monthly budget goals
-- Responsive UI for desktop and mobile
+### 3. Labour & Payroll Management
+- **Dual-Mode Payroll**: Support for both **Monthly Basis** (fixed salary) and **Contract Basis** (per-job/daily) workers.
+- **One-Tap Attendance**: Pro-rated wage calculation integrated directly into the balance sheet.
+- **Digital Ledger**: Track pending balances and payout history for every worker.
 
-Replace this list with your actual features.
+### 4. Site & Progress Tracking
+- **Multi-Site Management**: Track status, progress percentage, and financial health per site.
+- **Task & Habit Tracker**: Integrated productivity tools to manage site deadlines and personal maintenance.
 
-## Tech Stack
+## 🛠️ Tech Stack
 
-List your stack here. Example:
+- **Frontend**: React 18, TypeScript, Vite
+- **Styling**: Tailwind CSS (Premium Glassmorphism Design)
+- **Database/Auth**: Firebase Firestore & Firebase Auth
+- **AI Engine**: Google Gemini API
+- **Visualization**: Recharts & Lucide Icons
+- **PWA**: Fully installable on iOS and Android
 
-- Frontend: React, TypeScript, Tailwind CSS
-- Backend: Node.js, Express
-- Database: PostgreSQL / Supabase
-- Auth: JWT / Supabase Auth
-- Tooling: Vite, ESLint, Prettier
-
-## Project Structure
-
-```txt
-Expense_Manager/
-|-- src/
-|   |-- components/
-|   |-- pages/
-|   |-- services/
-|   |-- hooks/
-|   |-- utils/
-|   `-- main.tsx
-|-- public/
-|-- tests/
-|-- .env.example
-|-- package.json
-`-- README.md
-```
-
-Adjust this tree to match your project.
-
-## Getting Started
+## ⚙️ Getting Started
 
 ### Prerequisites
-
 - Node.js >= 18
-- npm (or pnpm/yarn)
-- Git
+- Firebase Project (Firestore enabled)
+- Google Cloud API Key (with Sheets API access)
 
 ### Installation
-
 ```bash
-# Clone repository
-git clone <your-repo-url>
-
-# Enter project directory
-cd Expense_Manager
+# Clone the repository
+git clone https://github.com/rohitsdev4/GenuinehOSapp.git
 
 # Install dependencies
 npm install
-```
 
-### Run Locally
-
-```bash
 # Start development server
 npm run dev
 ```
 
-Open `http://localhost:3000` (or the port shown in terminal).
+### Configuration
+1. **Firebase**: Add your config to `src/lib/firebase.ts`.
+2. **Google Sheets**: 
+   - Go to **Settings** in the app.
+   - Enter your **Google Sheet ID** and **API Key**.
+   - (Optional) Configure dedicated tab names for Expenses, Payments, and Labour.
 
-## Environment Variables
+## 🛡️ Security & Privacy
+- **Owner-Only Access**: Firestore rules ensure users can only access data associated with their UID.
+- **Local Storage**: Sensitive API keys (Gemini/Sheets) are stored securely in your browser's `localStorage`, not on the server.
 
-Create a `.env` file in project root:
-
-```env
-# App
-NODE_ENV=development
-PORT=3000
-
-# Database
-DATABASE_URL=
-
-# Auth (if applicable)
-JWT_SECRET=
-
-# API (if applicable)
-API_BASE_URL=
-```
-
-Also add an `.env.example` with safe placeholder values.
-
-## Available Scripts
-
-Common scripts (adjust to your setup):
-
-- `npm run dev` - start local dev server
-- `npm run build` - create production build
-- `npm run preview` - preview production build locally
-- `npm run test` - run test suite
-- `npm run lint` - run lint checks
-- `npm run format` - format codebase
-
-## Usage
-
-Basic flow example:
-
-1. Create an account or sign in.
-2. Add income and expense transactions.
-3. Assign categories and dates.
-4. Review dashboard totals and trends.
-5. Compare monthly spending against budget.
-
-## Testing
-
-```bash
-# Run all tests
-npm run test
-
-# Run tests in watch mode (if available)
-npm run test:watch
-```
-
-If this project does not have tests yet, document manual test steps here.
-
-## Deployment
-
-Example deployment flow:
-
-```bash
-# Build app
-npm run build
-
-# Deploy command (replace with your platform)
-# vercel --prod
-# or
-# netlify deploy --prod
-```
-
-Document your actual deployment platform and required env vars.
-
-## Contributing
-
-1. Fork the repo.
-2. Create a feature branch: `git checkout -b feature/your-feature`
-3. Commit your changes.
-4. Push branch and open a pull request.
-
-## Troubleshooting
-
-- **Port already in use**: change `PORT` in `.env` or stop the conflicting process.
-- **Env vars not loading**: confirm `.env` is in project root and restart server.
-- **Build fails**: run `npm run lint` and fix reported issues.
-- **Dependency issues**: delete `node_modules` and lockfile, then reinstall.
-
-## License
-
-Specify your license, for example:
-
-`MIT`
-
-## Contact
-
-Project maintainer: `<your-name>`  
-Email: `<your-email>`  
-Repository: `<your-repo-url>`
-
+---
+© 2026 Genuine Hospi Enterprises. All Rights Reserved.

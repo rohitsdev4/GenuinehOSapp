@@ -449,8 +449,8 @@ export default function Dashboard() {
                   <thead>
                     <tr className="text-gray-600 border-b border-[#1e2a40]">
                       <th className="text-left py-2 font-bold uppercase">Worker</th>
-                      <th className="text-left py-2 font-bold uppercase">Daily Rate</th>
-                      <th className="text-left py-2 font-bold uppercase">Status</th>
+                      <th className="text-left py-2 font-bold uppercase">Wage</th>
+                      <th className="text-left py-2 font-bold uppercase">Type</th>
                       <th className="text-right py-2 font-bold uppercase">Pending</th>
                     </tr>
                   </thead>
@@ -458,9 +458,18 @@ export default function Dashboard() {
                     {workers.filter(w => w.balance > 0).sort((a,b) => b.balance - a.balance).map(w => (
                       <tr key={w.id} className="border-b border-[#1e2a40]/50 last:border-0">
                         <td className="py-2 text-gray-300 font-medium">{w.name}</td>
-                        <td className="py-2 text-gray-400">{formatCurrency(w.dailyWage)}/day</td>
+                        <td className="py-2 text-gray-400">
+                          {w.paymentType === 'Monthly' 
+                            ? `${formatCurrency(w.monthlyWage || 0)}/mo` 
+                            : `${formatCurrency(w.dailyWage)}/day`}
+                        </td>
                         <td className="py-2">
-                          <span className={cn('px-1.5 py-0.5 rounded text-[9px] font-bold uppercase', w.status === 'Active' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-gray-500/10 text-gray-400')}>{w.status}</span>
+                          <span className={cn(
+                            'px-1.5 py-0.5 rounded text-[9px] font-bold uppercase', 
+                            w.paymentType === 'Monthly' ? 'bg-blue-500/10 text-blue-400' : 'bg-amber-500/10 text-amber-400'
+                          )}>
+                            {w.paymentType || 'Contract'}
+                          </span>
                         </td>
                         <td className="py-2 text-right text-rose-400 font-bold">{formatCurrency(w.balance)}</td>
                       </tr>

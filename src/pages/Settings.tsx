@@ -15,17 +15,18 @@ import {
   getLastSyncedRow, setLastSyncedRow, resetLastSyncedRow, buildSyncRange,
   type SheetType
 } from '@/src/lib/sync';
-import type { Expense, Payment, Site } from '@/src/types';
+import type { Expense, Payment, Site, LabourWorker } from '@/src/types';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
 type ImportedRow = {
   date: string; type: string; amount: number; category: string;
   description: string; labour: string; site: string; party: string; user: string;
+  phone?: string; wage?: number; paymentType?: 'Monthly' | 'Contract';
 };
 
 // Bug fix 1: typed wrapper instead of appending __forcetype string to raw arrays
-type TaggedRow = { row: ImportedRow; forceType?: 'expense' | 'payment' };
+type TaggedRow = { row: ImportedRow; forceType?: 'expense' | 'payment' | 'labour' };
 
 type UnmappedRow = { date: string; type: string; amount: number; reason: string; raw: ImportedRow; };
 type AliasEntry = { alias: string; canonical: string };
@@ -49,18 +50,27 @@ const createSourceRowKey = (row: ImportedRow) =>
 
 const mapRowByHeader = (row: string[], map: Record<string, number>): ImportedRow => {
   const pick = (aliases: string[]) => { for (const a of aliases) { const i = map[a]; if (i !== undefined) return row[i] ?? ''; } return ''; };
+  const typeStr = pick(['paymenttype', 'type', 'basis']).toLowerCase();
   return {
     date: pick(['date']), type: pick(['type']), amount: parseAmount(pick(['amount'])),
     category: pick(['category']) || 'Other',
     description: pick(['description', 'discription', 'details', 'note', 'notes']),
-    labour: pick(['labour', 'labor']), site: pick(['site']),
+    labour: pick(['labour', 'labor', 'name', 'worker']), site: pick(['site']),
     party: pick(['party']), user: pick(['user', 'username']),
+    phone: pick(['phone', 'mobile', 'contact']),
+    wage: parseAmount(pick(['wage', 'salary', 'rate'])),
+    paymentType: typeStr.includes('monthly') ? 'Monthly' : (typeStr.includes('contract') ? 'Contract' : undefined),
   };
 };
 
 const mapRowByPosition = (row: string[]): ImportedRow => {
-  const [date, type, amount, category, description, labour, site, party, user] = row;
-  return { date: date ?? '', type: type ?? '', amount: parseAmount(amount ?? ''), category: category || 'Other', description: description ?? '', labour: labour ?? '', site: site ?? '', party: party ?? '', user: user ?? '' };
+  const [date, type, amount, category, description, labour, site, party, user, phone, wage, pType] = row;
+  return { 
+    date: date ?? '', type: type ?? '', amount: parseAmount(amount ?? ''), category: category || 'Other', 
+    description: description ?? '', labour: labour ?? '', site: site ?? '', party: party ?? '', user: user ?? '',
+    phone: phone ?? '', wage: parseAmount(wage ?? ''),
+    paymentType: pType?.toLowerCase().includes('monthly') ? 'Monthly' : (pType?.toLowerCase().includes('contract') ? 'Contract' : undefined),
+  };
 };
 
 const normalizeImportedRows = (rows: string[][], prependedHeader?: string[]): ImportedRow[] => {
@@ -122,6 +132,7 @@ export default function Settings() {
   const [tabMain, setTabMain] = useState('Main');
   const [tabExpenses, setTabExpenses] = useState('');
   const [tabPayments, setTabPayments] = useState('');
+  const [tabLabour, setTabLabour] = useState('');
 
   // Incremental sync info
   const [lastSyncedRow, setLastSyncedRowState] = useState(1);
@@ -129,18 +140,23 @@ export default function Settings() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { data: existingExpenses, add: addExpense } = useFirestore<Expense>('expenses');
   const { data: existingPayments, add: addPayment } = useFirestore<Payment>('payments');
+  const { data: existingLabour, add: addLabour } = useFirestore<LabourWorker>('labour');
   const { data: sites } = useFirestore<Site>('sites');
 
   // Bug fix 2: keep always-current refs so useCallback never goes stale
-  // and the auto-sync timer doesn't reset every time Firestore data updates.
   const existingExpensesRef = useRef(existingExpenses);
   const existingPaymentsRef = useRef(existingPayments);
+  const existingLabourRef = useRef(existingLabour);
   const addExpenseRef = useRef(addExpense);
   const addPaymentRef = useRef(addPayment);
+  const addLabourRef = useRef(addLabour);
+
   useEffect(() => { existingExpensesRef.current = existingExpenses; }, [existingExpenses]);
   useEffect(() => { existingPaymentsRef.current = existingPayments; }, [existingPayments]);
+  useEffect(() => { existingLabourRef.current = existingLabour; }, [existingLabour]);
   useEffect(() => { addExpenseRef.current = addExpense; }, [addExpense]);
   useEffect(() => { addPaymentRef.current = addPayment; }, [addPayment]);
+  useEffect(() => { addLabourRef.current = addLabour; }, [addLabour]);
 
   // ── Load localStorage ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -172,6 +188,7 @@ export default function Settings() {
     setTabMain(getSheetTab('main'));
     setTabExpenses(localStorage.getItem('sheet_tab_expenses') || '');
     setTabPayments(localStorage.getItem('sheet_tab_payments') || '');
+    setTabLabour(localStorage.getItem('sheet_tab_labour') || '');
     // incremental
     setLastSyncedRowState(getLastSyncedRow());
   }, []);
@@ -181,6 +198,7 @@ export default function Settings() {
     saveSheetTab('main', tabMain || 'Main');
     saveSheetTab('expenses', tabExpenses);
     saveSheetTab('payments', tabPayments);
+    saveSheetTab('labour', tabLabour);
     alert('Sheet tab names saved!');
   };
 
@@ -201,8 +219,10 @@ export default function Settings() {
       const mainTab = getSheetTab('main');
       const expTab = localStorage.getItem('sheet_tab_expenses');
       const payTab = localStorage.getItem('sheet_tab_payments');
+      const labTab = localStorage.getItem('sheet_tab_labour');
 
-      // Start row for incremental
+      // Start row for incremental (Labour usually isn't incremental as it's a fixed list, 
+      // but we use the same row pointer for simplicity if shared)
       const lastRow = forceFullSync ? 1 : getLastSyncedRow();
       const isIncremental = lastRow > 1;
 
@@ -214,22 +234,28 @@ export default function Settings() {
       // Tagged rows: typed wrapper instead of polluting the raw string[] array
       let taggedRows: TaggedRow[] = [];
 
-      if (expTab && payTab) {
+      if (expTab || payTab || labTab) {
         // Dedicated sheet tabs per type — fetch in parallel
-        const { range: eRange } = buildSyncRange(expTab, lastRow);
-        const { range: pRange } = buildSyncRange(payTab, lastRow);
-        const [eFetch, pFetch] = await Promise.all([
-          fetchFromSheet(eRange),
-          fetchFromSheet(pRange),
+        const { range: eRange } = buildSyncRange(expTab || '', lastRow);
+        const { range: pRange } = buildSyncRange(payTab || '', lastRow);
+        const { range: lRange } = buildSyncRange(labTab || '', 1); // Labour always full fetch for list management
+        
+        const [eFetch, pFetch, lFetch] = await Promise.all([
+          expTab ? fetchFromSheet(eRange) : Promise.resolve([]),
+          payTab ? fetchFromSheet(pRange) : Promise.resolve([]),
+          labTab ? fetchFromSheet(lRange) : Promise.resolve([]),
         ]);
-        // Tag each set with an explicit forceType — no string mutation
+        
         const eParsed = normalizeImportedRows(eFetch || []);
         const pParsed = normalizeImportedRows(pFetch || []);
+        const lParsed = normalizeImportedRows(lFetch || []);
+        
         taggedRows = [
           ...eParsed.map(row => ({ row, forceType: 'expense' as const })),
           ...pParsed.map(row => ({ row, forceType: 'payment' as const })),
+          ...lParsed.map(row => ({ row, forceType: 'labour' as const })),
         ];
-        newLastRow = Math.max(lastRow + (eFetch?.length || 0), lastRow + (pFetch?.length || 0));
+        newLastRow = Math.max(lastRow, lastRow + (eFetch?.length || 0), lastRow + (pFetch?.length || 0));
       } else {
         // Single main sheet
         if (isIncremental) {
@@ -260,8 +286,34 @@ export default function Settings() {
         const fallback: ImportedRow = { date: entry.date || '', type: entry.category === 'Payment Received' ? 'Payment Received' : 'Expense', amount: Number(entry.amount || 0), category: entry.category || '', description: entry.notes || '', labour: '', site: entry.siteId || '', party: entry.partyName || '', user: entry.partner || '' };
         existingKeys.add(createSourceRowKey(fallback));
       });
+      
+      const existingWorkers = new Set(existingLabourRef.current.map(w => normalizeKey(w.name)));
 
       for (const { row, forceType } of taggedRows) {
+        // Labour specific logic
+        if (forceType === 'labour' || row.type.toLowerCase() === 'labour') {
+          if (!row.labour) { skippedCount++; continue; }
+          const nameKey = normalizeKey(row.labour);
+          if (existingWorkers.has(nameKey)) { skippedCount++; continue; }
+          
+          try {
+            await addLabourRef.current({
+              name: row.labour,
+              phone: row.phone || '',
+              status: 'Active',
+              paymentType: row.paymentType || 'Contract',
+              dailyWage: row.paymentType === 'Monthly' ? 0 : (row.wage || 0),
+              monthlyWage: row.paymentType === 'Monthly' ? (row.wage || 0) : 0,
+              balance: 0,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
+            existingWorkers.add(nameKey);
+            successCount++;
+          } catch { errorCount++; }
+          continue;
+        }
+
         // Apply site alias
         if (row.site) { const k = normalizeKey(row.site); if (aliasMap[k]) row.site = aliasMap[k]; }
 
@@ -277,7 +329,6 @@ export default function Settings() {
 
         const entry = { date: row.date, amount: row.amount, category: row.category || 'Other', notes: row.description || row.labour || '', partyName: row.party || '', siteId: row.site || '', partner: row.user || '', sourceRowKey };
 
-        // Bug fix 1: use typed forceType from wrapper, no string-in-array hack
         const isExpense = forceType === 'expense' || normalizedType === 'expense';
         const isPayment = forceType === 'payment' || ['payment received', 'payment', 'income'].includes(normalizedType);
 
@@ -546,11 +597,15 @@ export default function Settings() {
                 <label className="text-xs text-gray-500 font-bold uppercase tracking-wide">Payments Tab <span className="text-gray-600">(optional)</span></label>
                 <input type="text" value={tabPayments} onChange={e => setTabPayments(e.target.value)} placeholder="e.g. Payments" className="w-full bg-[#0b0e14] border border-[#1e2a40] rounded-xl px-3 py-2 text-white outline-none focus:border-[#00d4aa] transition font-mono text-sm" />
               </div>
+              <div className="space-y-1.5">
+                <label className="text-xs text-gray-500 font-bold uppercase tracking-wide">Labour Tab <span className="text-gray-600">(optional)</span></label>
+                <input type="text" value={tabLabour} onChange={e => setTabLabour(e.target.value)} placeholder="e.g. Labour" className="w-full bg-[#0b0e14] border border-[#1e2a40] rounded-xl px-3 py-2 text-white outline-none focus:border-[#00d4aa] transition font-mono text-sm" />
+              </div>
             </div>
-            {tabExpenses && tabPayments && (
+            {(tabExpenses || tabPayments || tabLabour) && (
               <div className="flex items-center gap-2 bg-[#00d4aa]/5 border border-[#00d4aa]/20 text-[#00d4aa] text-xs px-4 py-2.5 rounded-xl">
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
-                <span>Both dedicated tabs set — sync will pull Expenses from <strong className="font-mono">{tabExpenses}</strong> and Payments from <strong className="font-mono">{tabPayments}</strong>.</span>
+                <span>Dedicated tabs configured — sync will pull from specified tabs for each data type.</span>
               </div>
             )}
             <button onClick={handleSaveSheetTabs} className="bg-[#00d4aa] text-[#07090f] px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-[#00b894] transition cursor-pointer">

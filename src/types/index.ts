@@ -65,7 +65,9 @@ export interface LabourWorker {
   id?: string;
   name: string;
   phone?: string;
+  paymentType: 'Monthly' | 'Contract';
   dailyWage: number;
+  monthlyWage?: number;
   balance: number;
   status: 'Active' | 'Inactive';
   notes?: string;
