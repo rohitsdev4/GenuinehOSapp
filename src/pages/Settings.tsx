@@ -43,10 +43,29 @@ const parseAmount = (raw: string) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const createSourceRowKey = (row: ImportedRow) =>
-  [row.date.trim().toLowerCase(), row.type.trim().toLowerCase(),
-   Number(row.amount || 0).toFixed(2), (row.party || '').trim().toLowerCase(),
-   (row.site || '').trim().toLowerCase(), (row.description || '').trim().toLowerCase()].join('|');
+const createSourceRowKey = (row: ImportedRow) => {
+  const normalizeField = (str?: string) => (str || '').toString().trim().toLowerCase();
+
+  // Normalize date format: handle dd/mm/yyyy vs yyyy-mm-dd where possible or just strip spaces
+  const dateStr = normalizeField(row.date);
+
+  // Normalize type: treat "payment", "payment received", "income" as "payment"
+  let typeStr = normalizeField(row.type);
+  if (['payment received', 'payment', 'income'].includes(typeStr)) {
+    typeStr = 'payment';
+  } else if (['expense', 'expense paid'].includes(typeStr)) {
+    typeStr = 'expense';
+  }
+
+  return [
+    dateStr,
+    typeStr,
+    Number(row.amount || 0).toFixed(2),
+    normalizeField(row.party),
+    normalizeField(row.site),
+    normalizeField(row.description)
+  ].join('|');
+};
 
 const mapRowByHeader = (row: string[], map: Record<string, number>): ImportedRow => {
   const pick = (aliases: string[]) => { for (const a of aliases) { const i = map[a]; if (i !== undefined) return row[i] ?? ''; } return ''; };
@@ -350,7 +369,25 @@ export default function Settings() {
       const existingKeys = new Set<string>();
       [...existingExpensesRef.current, ...existingPaymentsRef.current].forEach((entry: any) => {
         if (entry.sourceRowKey) { existingKeys.add(entry.sourceRowKey); return; }
-        const fallback: ImportedRow = { date: entry.date || '', type: entry.category === 'Payment Received' ? 'Payment Received' : 'Expense', amount: Number(entry.amount || 0), category: entry.category || '', description: entry.notes || '', labour: '', site: entry.siteId || '', party: entry.partyName || '', user: entry.partner || '' };
+
+        // Ensure the fallback accurately reflects how createSourceRowKey normalizes it.
+        // Also check if entry was actually a Payment type in firebase
+        let fallbackType = 'Expense';
+        if (entry.category === 'Payment Received' || existingPaymentsRef.current.includes(entry)) {
+           fallbackType = 'payment';
+        }
+
+        const fallback: ImportedRow = {
+          date: entry.date || '',
+          type: fallbackType,
+          amount: Number(entry.amount || 0),
+          category: entry.category || '',
+          description: entry.notes || '',
+          labour: '',
+          site: entry.siteId || '',
+          party: entry.partyName || '',
+          user: entry.partner || ''
+        };
         existingKeys.add(createSourceRowKey(fallback));
       });
       
@@ -471,7 +508,17 @@ export default function Settings() {
       // Build dedup set from current data (Quick win 2)
       const existingKeys = new Set<string>();
       [...existingExpensesRef.current, ...existingPaymentsRef.current].forEach((entry: any) => {
-        if (entry.sourceRowKey) existingKeys.add(entry.sourceRowKey);
+        if (entry.sourceRowKey) { existingKeys.add(entry.sourceRowKey); return; }
+        let fallbackType = 'Expense';
+        if (entry.category === 'Payment Received' || existingPaymentsRef.current.includes(entry)) {
+           fallbackType = 'payment';
+        }
+        const fallback: ImportedRow = {
+          date: entry.date || '', type: fallbackType, amount: Number(entry.amount || 0),
+          category: entry.category || '', description: entry.notes || '',
+          labour: '', site: entry.siteId || '', party: entry.partyName || '', user: entry.partner || ''
+        };
+        existingKeys.add(createSourceRowKey(fallback));
       });
 
       // Build all write promises (Quick win 1: parallel with allSettled)
