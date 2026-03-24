@@ -140,11 +140,13 @@ export default function Settings() {
   const [lastSyncedRow, setLastSyncedRowState] = useState(1);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { data: existingExpenses, add: addExpense } = useFirestore<Expense>('expenses');
-  const { data: existingPayments, add: addPayment } = useFirestore<Payment>('payments');
-  const { data: existingLabour, add: addLabour } = useFirestore<LabourWorker>('labour');
-  const { data: sites, add: addSite } = useFirestore<Site>('sites');
-  const { data: existingParties, add: addParty } = useFirestore<Party>('parties');
+  const { data: existingExpenses, add: addExpense, clearAll: clearExpenses } = useFirestore<Expense>('expenses');
+  const { data: existingPayments, add: addPayment, clearAll: clearPayments } = useFirestore<Payment>('payments');
+  const { data: existingLabour, add: addLabour, clearAll: clearLabour } = useFirestore<LabourWorker>('labour');
+  const { data: sites, add: addSite, clearAll: clearSites } = useFirestore<Site>('sites');
+  const { data: existingParties, add: addParty, clearAll: clearParties } = useFirestore<Party>('parties');
+
+  const [isClearing, setIsClearing] = useState(false);
 
   // Bug fix 2: keep always-current refs so useCallback never goes stale
   const existingExpensesRef = useRef(existingExpenses);
@@ -514,6 +516,37 @@ export default function Settings() {
     finally { setIsTestingGemini(false); }
   };
 
+  // ── Clear App Data & Re-sync ──────────────────────────────────────────────
+  const handleClearAndResync = async () => {
+    if (!window.confirm('WARNING: This will permanently delete ALL expenses, payments, labour, sites, and parties from your database.\n\nAre you absolutely sure you want to proceed?')) {
+      return;
+    }
+
+    setIsClearing(true);
+    try {
+      await Promise.all([
+        clearExpenses(),
+        clearPayments(),
+        clearLabour(),
+        clearSites(),
+        clearParties()
+      ]);
+
+      resetLastSyncedRow();
+      setLastSyncedRowState(1);
+
+      // Give Firestore a tiny bit of time to settle after the deletes
+      setTimeout(() => {
+        setIsClearing(false);
+        runSync(false, true); // Force full re-sync
+      }, 1000);
+    } catch (error) {
+      console.error('Failed to clear data:', error);
+      alert('Failed to clear app data.');
+      setIsClearing(false);
+    }
+  };
+
   // ── Sheet config ──────────────────────────────────────────────────────────
   const handleSaveSheetConfig = async () => {
     setIsTestingSheet(true); setSheetStatus('idle');
@@ -586,6 +619,9 @@ export default function Settings() {
                 </button>
                 <button onClick={() => { resetLastSyncedRow(); setLastSyncedRowState(1); runSync(false, true); }} disabled={isSyncing || sheetStatus !== 'success'} className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-4 py-2 rounded-xl font-bold hover:bg-amber-500/20 transition cursor-pointer text-sm flex items-center gap-2 disabled:opacity-50" title="Force full re-sync from row 1">
                   <RotateCcw className="w-4 h-4" />Full Re-Sync
+                </button>
+                <button onClick={handleClearAndResync} disabled={isSyncing || isClearing || sheetStatus !== 'success'} className="bg-rose-500/10 text-rose-400 border border-rose-500/20 px-4 py-2 rounded-xl font-bold hover:bg-rose-500/20 transition cursor-pointer text-sm flex items-center gap-2 disabled:opacity-50" title="Delete ALL data and sync fresh from row 1">
+                  <Trash2 className="w-4 h-4" />{isClearing ? 'Deleting...' : 'Clear All & Sync'}
                 </button>
               </div>
             </div>
