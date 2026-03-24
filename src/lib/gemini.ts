@@ -1,12 +1,13 @@
-import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
+import OpenAI from "openai";
 
-const API_KEY = process.env.GEMINI_API_KEY;
+const API_KEY = process.env.OPENROUTER_API_KEY;
 
 export type GeminiModel =
-  | 'gemini-2.0-flash'
-  | 'gemini-3.1-flash-lite-preview'
-  | 'gemini-3-flash-preview'
-  | 'gemini-3.1-pro-preview'
+  | 'nvidia/llama-3.1-nemotron-70b-instruct:free'
+  | 'google/gemini-2.0-flash-lite-preview-02-05:free'
+  | 'qwen/qwen-2.5-coder-32b-instruct:free'
+  | 'zhipuai/glm-4-9b-chat:free'
+  | 'meta-llama/llama-3-8b-instruct:free';
 
 const SYSTEM_PROMPT = `
 You are GenuineOS AI — the all-in-one business brain for Rohit Kumar, CEO of Genuine Hospi Enterprises, Patna, Bihar, India.
@@ -91,7 +92,7 @@ export interface Message {
 
 interface GeminiRequest {
   prompt: string;
-  model?: GeminiModel;
+  model?: GeminiModel | string;
   context?: string;
   systemInstruction?: string;
   maxTokens?: number;
@@ -102,378 +103,474 @@ interface GeminiResponse {
   text: string;
   model: string;
   cached: boolean;
-  functionCalls?: any[];
+  functionCalls?: { name: string, args: any }[];
 }
 
 // ─── Tool Declarations ────────────────────────────────────────────────────────
 
-const addExpenseDeclaration: FunctionDeclaration = {
-  name: "addExpense",
-  description: "Add a new expense record to the database.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      amount: { type: Type.NUMBER, description: "The amount of the expense." },
-      category: { type: Type.STRING, description: "Category: Travel, Food, Labour Payment, Daily Expense, Other, Material Purchased." },
-      partyName: { type: Type.STRING, description: "Name of person/company paid to." },
-      siteId: { type: Type.STRING, description: "Site name where expense occurred." },
-      notes: { type: Type.STRING, description: "Additional notes." },
-      date: { type: Type.STRING, description: "Date in YYYY-MM-DD format. Defaults to today." },
-    },
-    required: ["amount", "category"],
-  },
-};
-
-const updateExpenseDeclaration: FunctionDeclaration = {
-  name: "updateExpense",
-  description: "Update an existing expense record by its ID.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      id: { type: Type.STRING, description: "The ID of the expense to update." },
-      amount: { type: Type.NUMBER, description: "New amount." },
-      category: { type: Type.STRING, description: "New category." },
-      partyName: { type: Type.STRING, description: "New party name." },
-      siteId: { type: Type.STRING, description: "New site." },
-      notes: { type: Type.STRING, description: "New notes." },
-      date: { type: Type.STRING, description: "New date YYYY-MM-DD." },
-    },
-    required: ["id"],
-  },
-};
-
-const deleteExpenseDeclaration: FunctionDeclaration = {
-  name: "deleteExpense",
-  description: "Delete an expense record by its ID.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      id: { type: Type.STRING, description: "The ID of the expense to delete." },
-    },
-    required: ["id"],
-  },
-};
-
-const addPaymentDeclaration: FunctionDeclaration = {
-  name: "addPayment",
-  description: "Add a new payment received record to the database.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      amount: { type: Type.NUMBER, description: "Amount received." },
-      category: { type: Type.STRING, description: "Payment method: Cash, Bank Transfer, UPI, Cheque." },
-      partyName: { type: Type.STRING, description: "Client or party who paid." },
-      siteId: { type: Type.STRING, description: "Site or project name." },
-      notes: { type: Type.STRING, description: "Additional notes." },
-      date: { type: Type.STRING, description: "Date in YYYY-MM-DD format. Defaults to today." },
-    },
-    required: ["amount", "partyName"],
-  },
-};
-
-const updatePaymentDeclaration: FunctionDeclaration = {
-  name: "updatePayment",
-  description: "Update an existing payment record by its ID.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      id: { type: Type.STRING, description: "The ID of the payment to update." },
-      amount: { type: Type.NUMBER },
-      category: { type: Type.STRING },
-      partyName: { type: Type.STRING },
-      siteId: { type: Type.STRING },
-      notes: { type: Type.STRING },
-      date: { type: Type.STRING },
-    },
-    required: ["id"],
-  },
-};
-
-const deletePaymentDeclaration: FunctionDeclaration = {
-  name: "deletePayment",
-  description: "Delete a payment record by its ID.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      id: { type: Type.STRING, description: "The ID of the payment to delete." },
-    },
-    required: ["id"],
-  },
-};
-
-const addTaskDeclaration: FunctionDeclaration = {
-  name: "addTask",
-  description: "Add a new task to the to-do list.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      title: { type: Type.STRING, description: "Task title." },
-      priority: { type: Type.STRING, enum: ["Low", "Medium", "High"], description: "Priority level." },
-      dueDate: { type: Type.STRING, description: "Due date YYYY-MM-DD." },
-      notes: { type: Type.STRING, description: "Additional notes." },
-    },
-    required: ["title", "priority"],
-  },
-};
-
-const updateTaskDeclaration: FunctionDeclaration = {
-  name: "updateTask",
-  description: "Update an existing task by its ID.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      id: { type: Type.STRING, description: "Task ID." },
-      title: { type: Type.STRING },
-      priority: { type: Type.STRING, enum: ["Low", "Medium", "High"] },
-      status: { type: Type.STRING, enum: ["Pending", "In Progress", "Completed"] },
-      dueDate: { type: Type.STRING },
-      notes: { type: Type.STRING },
-    },
-    required: ["id"],
-  },
-};
-
-const deleteTaskDeclaration: FunctionDeclaration = {
-  name: "deleteTask",
-  description: "Delete a task by its ID.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      id: { type: Type.STRING, description: "Task ID." },
-    },
-    required: ["id"],
-  },
-};
-
-const addReceivableDeclaration: FunctionDeclaration = {
-  name: "addReceivable",
-  description: "Add a new receivable (money to be collected) record.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      partyName: { type: Type.STRING, description: "Party who owes money." },
-      amount: { type: Type.NUMBER, description: "Total amount to collect." },
-      dueDate: { type: Type.STRING, description: "Expected collection date YYYY-MM-DD." },
-      notes: { type: Type.STRING },
-    },
-    required: ["partyName", "amount", "dueDate"],
-  },
-};
-
-const updateReceivableDeclaration: FunctionDeclaration = {
-  name: "updateReceivable",
-  description: "Update a receivable record (e.g. mark partial payment, update status).",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      id: { type: Type.STRING, description: "Receivable ID." },
-      partyName: { type: Type.STRING },
-      amount: { type: Type.NUMBER },
-      amountCollected: { type: Type.NUMBER, description: "Amount collected so far." },
-      status: { type: Type.STRING, enum: ["Pending", "Partial", "Collected"] },
-      dueDate: { type: Type.STRING },
-      notes: { type: Type.STRING },
-    },
-    required: ["id"],
-  },
-};
-
-const syncReceivablesFromSitesDeclaration: FunctionDeclaration = {
-  name: "syncReceivablesFromSites",
-  description: "Create or update receivables based on current pending amount from active sites.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {},
-  },
-};
-
-const addSiteDeclaration: FunctionDeclaration = {
-  name: "addSite",
-  description: "Add a new site/project.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      name: { type: Type.STRING, description: "Site name." },
-      location: { type: Type.STRING, description: "Location/city." },
-      status: { type: Type.STRING, enum: ["Active", "Completed", "On Hold"] },
-      budget: { type: Type.NUMBER, description: "Project budget." },
-      startDate: { type: Type.STRING, description: "Start date YYYY-MM-DD." },
-      notes: { type: Type.STRING },
-    },
-    required: ["name", "location"],
-  },
-};
-
-const updateSiteDeclaration: FunctionDeclaration = {
-  name: "updateSite",
-  description: "Update a site/project record.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      id: { type: Type.STRING, description: "Site ID." },
-      name: { type: Type.STRING },
-      location: { type: Type.STRING },
-      status: { type: Type.STRING, enum: ["Active", "Completed", "On Hold"] },
-      budget: { type: Type.NUMBER },
-      progress: { type: Type.NUMBER, description: "Progress percentage 0-100." },
-      notes: { type: Type.STRING },
-    },
-    required: ["id"],
-  },
-};
-
-const syncSitesFromContractsDeclaration: FunctionDeclaration = {
-  name: "syncSitesFromContracts",
-  description: "Auto-create or update standard contract sites with payment received and pending calculations.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      clientName: { type: Type.STRING, description: "Client name for contract sites. Defaults to Surgical wholesale mart." },
-    },
-  },
-};
-
-const addLabourDeclaration: FunctionDeclaration = {
-  name: "addLabour",
-  description: "Add a new labour worker record.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      name: { type: Type.STRING, description: "Worker name." },
-      phone: { type: Type.STRING, description: "Phone number." },
-      dailyWage: { type: Type.NUMBER, description: "Daily wage amount." },
-      notes: { type: Type.STRING },
-    },
-    required: ["name", "dailyWage"],
-  },
-};
-
-const updateLabourDeclaration: FunctionDeclaration = {
-  name: "updateLabour",
-  description: "Update a labour worker record.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      id: { type: Type.STRING, description: "Labour ID." },
-      name: { type: Type.STRING },
-      phone: { type: Type.STRING },
-      dailyWage: { type: Type.NUMBER },
-      balance: { type: Type.NUMBER, description: "Current balance owed." },
-      status: { type: Type.STRING, enum: ["Active", "Inactive"] },
-      notes: { type: Type.STRING },
-    },
-    required: ["id"],
-  },
-};
-
-const syncLabourFromSheetDeclaration: FunctionDeclaration = {
-  name: "syncLabourFromSheet",
-  description: "Read Google Sheet rows and auto-update labour entries (including contract workers) with balances.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      mode: { type: Type.STRING, enum: ["all", "contract", "active"], description: "Optional sync mode." },
-    },
-  },
-};
-
-const addClientDeclaration: FunctionDeclaration = {
-  name: "addClient",
-  description: "Add a new client record.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      name: { type: Type.STRING, description: "Client name." },
-      company: { type: Type.STRING, description: "Company/hospital name." },
-      phone: { type: Type.STRING },
-      email: { type: Type.STRING },
-      address: { type: Type.STRING },
-      notes: { type: Type.STRING },
-    },
-    required: ["name"],
-  },
-};
-
-const addDealDeclaration: FunctionDeclaration = {
-  name: "addDeal",
-  description: "Add a new deal/lead.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      title: { type: Type.STRING, description: "Deal title." },
-      clientName: { type: Type.STRING, description: "Client name." },
-      amount: { type: Type.NUMBER, description: "Deal value." },
-      stage: { type: Type.STRING, enum: ["Lead", "Negotiation", "Won", "Lost"] },
-      notes: { type: Type.STRING },
-    },
-    required: ["title", "clientName", "amount", "stage"],
-  },
-};
-
-const updateDealDeclaration: FunctionDeclaration = {
-  name: "updateDeal",
-  description: "Update a deal record.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      id: { type: Type.STRING, description: "Deal ID." },
-      title: { type: Type.STRING },
-      clientName: { type: Type.STRING },
-      amount: { type: Type.NUMBER },
-      stage: { type: Type.STRING, enum: ["Lead", "Negotiation", "Won", "Lost"] },
-      notes: { type: Type.STRING },
-    },
-    required: ["id"],
-  },
-};
-
-const queryDataDeclaration: FunctionDeclaration = {
-  name: "queryData",
-  description: "Query and summarize data from the database. Use this when user asks for totals, summaries, lists, or analysis of specific data.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      collection: { 
-        type: Type.STRING, 
-        enum: ["expenses", "payments", "receivables", "tasks", "sites", "labour", "clients", "deals"],
-        description: "Which collection to query." 
+const addExpenseDeclaration: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "addExpense",
+    description: "Add a new expense record to the database.",
+    parameters: {
+      type: "object",
+      properties: {
+        amount: { type: "number", description: "The amount of the expense." },
+        category: { type: "string", description: "Category: Travel, Food, Labour Payment, Daily Expense, Other, Material Purchased." },
+        partyName: { type: "string", description: "Name of person/company paid to." },
+        siteId: { type: "string", description: "Site name where expense occurred." },
+        notes: { type: "string", description: "Additional notes." },
+        date: { type: "string", description: "Date in YYYY-MM-DD format. Defaults to today." },
       },
-      filter: { type: Type.STRING, description: "Optional filter description (e.g. 'this month', 'by site Ludhiana', 'pending only')." },
+      required: ["amount", "category"],
+      additionalProperties: false,
     },
-    required: ["collection"],
-  },
+  }
 };
 
-const addDiaryEntryDeclaration: FunctionDeclaration = {
-  name: "addDiaryEntry",
-  description: "Add a new diary/journal entry. Use this when user wants to record thoughts, reflections, daily events, or asks AI to write a journal entry for them.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      content: { type: Type.STRING, description: "The full diary entry content. Can be AI-written based on user's day/context." },
-      mood: { type: Type.STRING, description: "Mood: Happy, Motivated, Stressed, Neutral, Tired, Excited, Worried, Grateful." },
-      date: { type: Type.STRING, description: "Date YYYY-MM-DD. Defaults to today." },
+const updateExpenseDeclaration: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "updateExpense",
+    description: "Update an existing expense record by its ID.",
+    parameters: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The ID of the expense to update." },
+        amount: { type: "number", description: "New amount." },
+        category: { type: "string", description: "New category." },
+        partyName: { type: "string", description: "New party name." },
+        siteId: { type: "string", description: "New site." },
+        notes: { type: "string", description: "New notes." },
+        date: { type: "string", description: "New date YYYY-MM-DD." },
+      },
+      required: ["id"],
+      additionalProperties: false,
     },
-    required: ["content"],
-  },
+  }
 };
 
-const updateDiaryEntryDeclaration: FunctionDeclaration = {
-  name: "updateDiaryEntry",
-  description: "Update an existing diary entry.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      id: { type: Type.STRING, description: "Diary entry ID." },
-      content: { type: Type.STRING },
-      mood: { type: Type.STRING },
-      date: { type: Type.STRING },
+const deleteExpenseDeclaration: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "deleteExpense",
+    description: "Delete an expense record by its ID.",
+    parameters: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The ID of the expense to delete." },
+      },
+      required: ["id"],
+      additionalProperties: false,
     },
-    required: ["id"],
-  },
+  }
 };
 
-export const ALL_TOOL_DECLARATIONS: FunctionDeclaration[] = [
+const addPaymentDeclaration: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "addPayment",
+    description: "Add a new payment received record to the database.",
+    parameters: {
+      type: "object",
+      properties: {
+        amount: { type: "number", description: "Amount received." },
+        category: { type: "string", description: "Payment method: Cash, Bank Transfer, UPI, Cheque." },
+        partyName: { type: "string", description: "Client or party who paid." },
+        siteId: { type: "string", description: "Site or project name." },
+        notes: { type: "string", description: "Additional notes." },
+        date: { type: "string", description: "Date in YYYY-MM-DD format. Defaults to today." },
+      },
+      required: ["amount", "partyName"],
+      additionalProperties: false,
+    },
+  }
+};
+
+const updatePaymentDeclaration: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "updatePayment",
+    description: "Update an existing payment record by its ID.",
+    parameters: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The ID of the payment to update." },
+        amount: { type: "number" },
+        category: { type: "string" },
+        partyName: { type: "string" },
+        siteId: { type: "string" },
+        notes: { type: "string" },
+        date: { type: "string" },
+      },
+      required: ["id"],
+      additionalProperties: false,
+    },
+  }
+};
+
+const deletePaymentDeclaration: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "deletePayment",
+    description: "Delete a payment record by its ID.",
+    parameters: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The ID of the payment to delete." },
+      },
+      required: ["id"],
+      additionalProperties: false,
+    },
+  }
+};
+
+const addTaskDeclaration: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "addTask",
+    description: "Add a new task to the to-do list.",
+    parameters: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Task title." },
+        priority: { type: "string", enum: ["Low", "Medium", "High"], description: "Priority level." },
+        dueDate: { type: "string", description: "Due date YYYY-MM-DD." },
+        notes: { type: "string", description: "Additional notes." },
+      },
+      required: ["title", "priority"],
+      additionalProperties: false,
+    },
+  }
+};
+
+const updateTaskDeclaration: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "updateTask",
+    description: "Update an existing task by its ID.",
+    parameters: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Task ID." },
+        title: { type: "string" },
+        priority: { type: "string", enum: ["Low", "Medium", "High"] },
+        status: { type: "string", enum: ["Pending", "In Progress", "Completed"] },
+        dueDate: { type: "string" },
+        notes: { type: "string" },
+      },
+      required: ["id"],
+      additionalProperties: false,
+    },
+  }
+};
+
+const deleteTaskDeclaration: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "deleteTask",
+    description: "Delete a task by its ID.",
+    parameters: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Task ID." },
+      },
+      required: ["id"],
+      additionalProperties: false,
+    },
+  }
+};
+
+const addReceivableDeclaration: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "addReceivable",
+    description: "Add a new receivable (money to be collected) record.",
+    parameters: {
+      type: "object",
+      properties: {
+        partyName: { type: "string", description: "Party who owes money." },
+        amount: { type: "number", description: "Total amount to collect." },
+        dueDate: { type: "string", description: "Expected collection date YYYY-MM-DD." },
+        notes: { type: "string" },
+      },
+      required: ["partyName", "amount", "dueDate"],
+      additionalProperties: false,
+    },
+  }
+};
+
+const updateReceivableDeclaration: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "updateReceivable",
+    description: "Update a receivable record (e.g. mark partial payment, update status).",
+    parameters: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Receivable ID." },
+        partyName: { type: "string" },
+        amount: { type: "number" },
+        amountCollected: { type: "number", description: "Amount collected so far." },
+        status: { type: "string", enum: ["Pending", "Partial", "Collected"] },
+        dueDate: { type: "string" },
+        notes: { type: "string" },
+      },
+      required: ["id"],
+      additionalProperties: false,
+    },
+  }
+};
+
+const syncReceivablesFromSitesDeclaration: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "syncReceivablesFromSites",
+    description: "Create or update receivables based on current pending amount from active sites.",
+    parameters: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+  }
+};
+
+const addSiteDeclaration: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "addSite",
+    description: "Add a new site/project.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Site name." },
+        location: { type: "string", description: "Location/city." },
+        status: { type: "string", enum: ["Active", "Completed", "On Hold"] },
+        budget: { type: "number", description: "Project budget." },
+        startDate: { type: "string", description: "Start date YYYY-MM-DD." },
+        notes: { type: "string" },
+      },
+      required: ["name", "location"],
+      additionalProperties: false,
+    },
+  }
+};
+
+const updateSiteDeclaration: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "updateSite",
+    description: "Update a site/project record.",
+    parameters: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Site ID." },
+        name: { type: "string" },
+        location: { type: "string" },
+        status: { type: "string", enum: ["Active", "Completed", "On Hold"] },
+        budget: { type: "number" },
+        progress: { type: "number", description: "Progress percentage 0-100." },
+        notes: { type: "string" },
+      },
+      required: ["id"],
+      additionalProperties: false,
+    },
+  }
+};
+
+const syncSitesFromContractsDeclaration: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "syncSitesFromContracts",
+    description: "Auto-create or update standard contract sites with payment received and pending calculations.",
+    parameters: {
+      type: "object",
+      properties: {
+        clientName: { type: "string", description: "Client name for contract sites. Defaults to Surgical wholesale mart." },
+      },
+      additionalProperties: false,
+    },
+  }
+};
+
+const addLabourDeclaration: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "addLabour",
+    description: "Add a new labour worker record.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Worker name." },
+        phone: { type: "string", description: "Phone number." },
+        dailyWage: { type: "number", description: "Daily wage amount." },
+        notes: { type: "string" },
+      },
+      required: ["name", "dailyWage"],
+      additionalProperties: false,
+    },
+  }
+};
+
+const updateLabourDeclaration: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "updateLabour",
+    description: "Update a labour worker record.",
+    parameters: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Labour ID." },
+        name: { type: "string" },
+        phone: { type: "string" },
+        dailyWage: { type: "number" },
+        balance: { type: "number", description: "Current balance owed." },
+        status: { type: "string", enum: ["Active", "Inactive"] },
+        notes: { type: "string" },
+      },
+      required: ["id"],
+      additionalProperties: false,
+    },
+  }
+};
+
+const syncLabourFromSheetDeclaration: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "syncLabourFromSheet",
+    description: "Read Google Sheet rows and auto-update labour entries (including contract workers) with balances.",
+    parameters: {
+      type: "object",
+      properties: {
+        mode: { type: "string", enum: ["all", "contract", "active"], description: "Optional sync mode." },
+      },
+      additionalProperties: false,
+    },
+  }
+};
+
+const addClientDeclaration: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "addClient",
+    description: "Add a new client record.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Client name." },
+        company: { type: "string", description: "Company/hospital name." },
+        phone: { type: "string" },
+        email: { type: "string" },
+        address: { type: "string" },
+        notes: { type: "string" },
+      },
+      required: ["name"],
+      additionalProperties: false,
+    },
+  }
+};
+
+const addDealDeclaration: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "addDeal",
+    description: "Add a new deal/lead.",
+    parameters: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Deal title." },
+        clientName: { type: "string", description: "Client name." },
+        amount: { type: "number", description: "Deal value." },
+        stage: { type: "string", enum: ["Lead", "Negotiation", "Won", "Lost"] },
+        notes: { type: "string" },
+      },
+      required: ["title", "clientName", "amount", "stage"],
+      additionalProperties: false,
+    },
+  }
+};
+
+const updateDealDeclaration: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "updateDeal",
+    description: "Update a deal record.",
+    parameters: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Deal ID." },
+        title: { type: "string" },
+        clientName: { type: "string" },
+        amount: { type: "number" },
+        stage: { type: "string", enum: ["Lead", "Negotiation", "Won", "Lost"] },
+        notes: { type: "string" },
+      },
+      required: ["id"],
+      additionalProperties: false,
+    },
+  }
+};
+
+const queryDataDeclaration: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "queryData",
+    description: "Query and summarize data from the database. Use this when user asks for totals, summaries, lists, or analysis of specific data.",
+    parameters: {
+      type: "object",
+      properties: {
+        collection: {
+          type: "string",
+          enum: ["expenses", "payments", "receivables", "tasks", "sites", "labour", "clients", "deals"],
+          description: "Which collection to query."
+        },
+        filter: { type: "string", description: "Optional filter description (e.g. 'this month', 'by site Ludhiana', 'pending only')." },
+      },
+      required: ["collection"],
+      additionalProperties: false,
+    },
+  }
+};
+
+const addDiaryEntryDeclaration: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "addDiaryEntry",
+    description: "Add a new diary/journal entry. Use this when user wants to record thoughts, reflections, daily events, or asks AI to write a journal entry for them.",
+    parameters: {
+      type: "object",
+      properties: {
+        content: { type: "string", description: "The full diary entry content. Can be AI-written based on user's day/context." },
+        mood: { type: "string", description: "Mood: Happy, Motivated, Stressed, Neutral, Tired, Excited, Worried, Grateful." },
+        date: { type: "string", description: "Date YYYY-MM-DD. Defaults to today." },
+      },
+      required: ["content"],
+      additionalProperties: false,
+    },
+  }
+};
+
+const updateDiaryEntryDeclaration: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "updateDiaryEntry",
+    description: "Update an existing diary entry.",
+    parameters: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Diary entry ID." },
+        content: { type: "string" },
+        mood: { type: "string" },
+        date: { type: "string" },
+      },
+      required: ["id"],
+      additionalProperties: false,
+    },
+  }
+};
+
+export const ALL_TOOL_DECLARATIONS: OpenAI.ChatCompletionTool[] = [
   addExpenseDeclaration, updateExpenseDeclaration, deleteExpenseDeclaration,
   addPaymentDeclaration, updatePaymentDeclaration, deletePaymentDeclaration,
   addTaskDeclaration, updateTaskDeclaration, deleteTaskDeclaration,
@@ -497,46 +594,77 @@ async function delay(ms: number) {
 
 export async function callGemini({
   prompt,
-  model = 'gemini-2.0-flash',
+  model = 'nvidia/llama-3.1-nemotron-70b-instruct:free',
   context = '',
   systemInstruction = SYSTEM_PROMPT,
   maxTokens = 800,
   history = [],
 }: GeminiRequest): Promise<GeminiResponse> {
 
-  const localKey = typeof window !== 'undefined' ? localStorage.getItem('gemini_api_key') : null;
-  const ai = new GoogleGenAI({ apiKey: localKey || API_KEY || '' });
+  const localKey = typeof window !== 'undefined' ? localStorage.getItem('openrouter_api_key') : null;
+  const keyToUse = localKey || API_KEY || '';
 
-  let fullPrompt = context ? `${context}\n\n` : '';
-  
-  if (history.length > 0) {
-    fullPrompt += '=== Chat History ===\n';
-    history.slice(-6).forEach(msg => {
-      fullPrompt += `${msg.role === 'user' ? 'User' : 'AI'}: ${msg.text}\n`;
-    });
-    fullPrompt += '\n';
+  const openai = new OpenAI({
+    baseURL: "https://openrouter.ai/api/v1",
+    apiKey: keyToUse,
+    dangerouslyAllowBrowser: true, // Required for running from browser
+    defaultHeaders: {
+      "HTTP-Referer": typeof window !== 'undefined' ? window.location.origin : "http://localhost:3000",
+      "X-Title": "GenuineOS",
+    }
+  });
+
+  const messages: OpenAI.ChatCompletionMessageParam[] = [
+    { role: "system", content: systemInstruction }
+  ];
+
+  if (context) {
+    messages.push({ role: "system", content: context });
   }
 
-  fullPrompt += `User Query: ${prompt}`;
+  if (history.length > 0) {
+    history.slice(-6).forEach(msg => {
+      messages.push({
+        role: msg.role === 'user' ? 'user' : 'assistant',
+        content: msg.text
+      });
+    });
+  }
+
+  messages.push({ role: "user", content: prompt });
 
   const maxRetries = 3;
   let attempt = 0;
 
   while (attempt <= maxRetries) {
     try {
-      const response = await ai.models.generateContent({
+      const response = await openai.chat.completions.create({
         model: model,
-        contents: fullPrompt,
-        config: {
-          systemInstruction: systemInstruction,
-          maxOutputTokens: maxTokens,
-          temperature: 0.7,
-          tools: [{ functionDeclarations: ALL_TOOL_DECLARATIONS }],
-        },
+        messages: messages,
+        max_tokens: maxTokens,
+        temperature: 0.7,
+        tools: ALL_TOOL_DECLARATIONS,
       });
 
-      const text = response.text || '';
-      const functionCalls = response.functionCalls;
+      const choice = response.choices[0];
+      const text = choice.message.content || '';
+
+      let functionCalls: { name: string, args: any }[] | undefined;
+
+      if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
+        functionCalls = choice.message.tool_calls.map((tc: any) => {
+          let args = {};
+          try {
+            args = JSON.parse(tc.function.arguments);
+          } catch (e) {
+            console.error("Failed to parse tool arguments", e);
+          }
+          return {
+            name: tc.function.name,
+            args: args
+          };
+        });
+      }
 
       return { text, model, cached: false, functionCalls };
     } catch (error: any) {
@@ -547,14 +675,14 @@ export async function callGemini({
       if (isRateLimit && attempt < maxRetries) {
         attempt++;
         const backoffTime = attempt * 2000; // 2s, 4s, 6s...
-        console.warn(`Gemini API rate limit hit. Retrying in ${backoffTime}ms (Attempt ${attempt} of ${maxRetries})...`);
+        console.warn(`OpenRouter API rate limit hit. Retrying in ${backoffTime}ms (Attempt ${attempt} of ${maxRetries})...`);
         await delay(backoffTime);
         continue;
       }
 
-      console.error("Gemini API Error:", error);
+      console.error("OpenRouter API Error:", error);
 
-      if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('invalid API key')) {
+      if (errorMessage.includes('401') || errorMessage.includes('invalid API key')) {
         throw new Error('INVALID_API_KEY');
       }
       if (isRateLimit) {
@@ -569,15 +697,19 @@ export async function callGemini({
 
 export async function testGeminiConnection(key: string): Promise<boolean> {
   try {
-    const ai = new GoogleGenAI({ apiKey: key });
-    await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: 'Hi',
-      config: { maxOutputTokens: 5 }
+    const openai = new OpenAI({
+      baseURL: "https://openrouter.ai/api/v1",
+      apiKey: key,
+      dangerouslyAllowBrowser: true,
+    });
+    await openai.chat.completions.create({
+      model: 'nvidia/llama-3.1-nemotron-70b-instruct:free',
+      messages: [{ role: 'user', content: 'Hi' }],
+      max_tokens: 5
     });
     return true;
   } catch (error) {
-    console.error("Gemini Test Connection Error:", error);
+    console.error("OpenRouter Test Connection Error:", error);
     return false;
   }
 }

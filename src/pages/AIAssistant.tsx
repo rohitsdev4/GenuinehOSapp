@@ -49,7 +49,7 @@ export default function AIAssistant() {
   });
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [model, setModel] = useState<GeminiModel>('gemini-2.0-flash');
+  const [model, setModel] = useState<GeminiModel>('nvidia/llama-3.1-nemotron-70b-instruct:free');
   const [sheetData, setSheetData] = useState<any[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -402,7 +402,7 @@ export default function AIAssistant() {
         prompt: text,
         model,
         context: getContext(),
-        maxTokens: model === 'gemini-3.1-pro-preview' ? 1200 : 800,
+        maxTokens: 1200,
         history: messages.map(m => ({ role: m.role, text: m.text })),
       });
 
@@ -452,10 +452,11 @@ export default function AIAssistant() {
               onChange={e => setModel(e.target.value as GeminiModel)}
               className="bg-[#111520] border border-[#1e2a40] text-xs text-gray-300 rounded-lg px-3 py-2 outline-none focus:border-[#00d4aa] transition"
             >
-              <option value="gemini-2.0-flash">🚀 Flash 2.0 (Fast & Smart)</option>
-              <option value="gemini-3.1-flash-lite-preview">⚡ Flash-Lite (1000/day)</option>
-              <option value="gemini-3-flash-preview">🔵 Flash (250/day)</option>
-              <option value="gemini-3.1-pro-preview">🧠 Pro (100/day)</option>
+              <option value="nvidia/llama-3.1-nemotron-70b-instruct:free">🧠 Nvidia Llama 3.1 70B</option>
+              <option value="qwen/qwen-2.5-coder-32b-instruct:free">💻 Qwen 2.5 Coder 32B</option>
+              <option value="google/gemini-2.0-flash-lite-preview-02-05:free">⚡ Gemini 2.0 Flash Lite</option>
+              <option value="zhipuai/glm-4-9b-chat:free">🌏 GLM-4 9B</option>
+              <option value="meta-llama/llama-3-8b-instruct:free">🦙 Llama 3 8B</option>
             </select>
             <button
               onClick={clearHistory}

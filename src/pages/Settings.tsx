@@ -192,7 +192,7 @@ export default function Settings() {
 
   // ── Load localStorage ─────────────────────────────────────────────────────
   useEffect(() => {
-    const savedKey = localStorage.getItem('gemini_api_key');
+    const savedKey = localStorage.getItem('openrouter_api_key');
     if (savedKey) {
       setApiKey(savedKey);
       testGeminiConnection(savedKey).then(ok => setGeminiStatus(ok ? 'success' : 'error'));
@@ -572,14 +572,14 @@ export default function Settings() {
     reader.readAsText(file);
   };
 
-  // ── Gemini ────────────────────────────────────────────────────────────────
+  // ── OpenRouter ────────────────────────────────────────────────────────────
   const handleSaveKey = async () => {
     setIsTestingGemini(true); setGeminiStatus('idle');
-    if (!apiKey.trim()) { localStorage.removeItem('gemini_api_key'); setIsSaved(true); setGeminiStatus('idle'); setTimeout(() => setIsSaved(false), 2000); setIsTestingGemini(false); return; }
+    if (!apiKey.trim()) { localStorage.removeItem('openrouter_api_key'); setIsSaved(true); setGeminiStatus('idle'); setTimeout(() => setIsSaved(false), 2000); setIsTestingGemini(false); return; }
     try {
       const ok = await testGeminiConnection(apiKey);
-      if (ok) { localStorage.setItem('gemini_api_key', apiKey); setIsSaved(true); setGeminiStatus('success'); setTimeout(() => setIsSaved(false), 2000); }
-      else { setGeminiStatus('error'); if (window.confirm('Test failed. Save anyway?')) { localStorage.setItem('gemini_api_key', apiKey); setIsSaved(true); setTimeout(() => setIsSaved(false), 2000); } }
+      if (ok) { localStorage.setItem('openrouter_api_key', apiKey); setIsSaved(true); setGeminiStatus('success'); setTimeout(() => setIsSaved(false), 2000); }
+      else { setGeminiStatus('error'); if (window.confirm('Test failed. Save anyway?')) { localStorage.setItem('openrouter_api_key', apiKey); setIsSaved(true); setTimeout(() => setIsSaved(false), 2000); } }
     } catch { setGeminiStatus('error'); alert('Error testing connection.'); }
     finally { setIsTestingGemini(false); }
   };
@@ -655,9 +655,9 @@ export default function Settings() {
           <div className="p-5 border-b border-[#1e2a40] flex items-center gap-2"><Key className="w-4 h-4 text-[#00d4aa]" /><h3 className="font-bold text-white">AI Assistant Configuration</h3></div>
           <div className="p-5 space-y-4">
             <div className="space-y-2">
-              <label className="text-sm text-gray-400 font-bold block">Google Gemini API Key</label>
+              <label className="text-sm text-gray-400 font-bold block">OpenRouter API Key</label>
               <div className="flex gap-2">
-                <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="Enter your Gemini API Key..." className="flex-1 bg-[#0b0e14] border border-[#1e2a40] rounded-xl px-4 py-2 text-white outline-none focus:border-[#00d4aa] transition font-mono text-sm" />
+                <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="Enter your OpenRouter API Key..." className="flex-1 bg-[#0b0e14] border border-[#1e2a40] rounded-xl px-4 py-2 text-white outline-none focus:border-[#00d4aa] transition font-mono text-sm" />
                 <button onClick={handleSaveKey} disabled={isTestingGemini} className="bg-[#00d4aa] text-[#07090f] px-4 py-2 rounded-xl font-bold flex items-center gap-2 hover:bg-[#00b894] transition cursor-pointer disabled:opacity-50">
                   {isTestingGemini ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   {isSaved ? 'Saved!' : isTestingGemini ? 'Testing...' : 'Save & Test'}
@@ -665,7 +665,7 @@ export default function Settings() {
               </div>
               {geminiStatus === 'success' && <div className="flex items-center gap-2 text-emerald-400 text-xs"><CheckCircle2 className="w-3 h-3" /><span>Connected!</span></div>}
               {geminiStatus === 'error' && <div className="flex items-center gap-2 text-rose-400 text-xs"><AlertCircle className="w-3 h-3" /><span>Invalid API Key.</span></div>}
-              <p className="text-xs text-gray-500">Get key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-[#00d4aa] hover:underline">AI Studio</a>. Stored locally.</p>
+              <p className="text-xs text-gray-500">Get key from <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" className="text-[#00d4aa] hover:underline">OpenRouter Settings</a>. Stored locally.</p>
             </div>
           </div>
         </div>
