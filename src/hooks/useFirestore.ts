@@ -6,7 +6,6 @@ import {
   serverTimestamp, Timestamp
 } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
-import { syncToSheet } from '@/src/lib/sync';
 
 export function useFirestore<T extends { id?: string }>(
   collectionName: string
@@ -62,9 +61,6 @@ export function useFirestore<T extends { id?: string }>(
         updatedAt: serverTimestamp(),
       });
       
-      // Sync to sheet
-      await syncToSheet('append', Object.values(item), 'Sheet1!A1');
-      
       return docRef.id;
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, path);
@@ -80,9 +76,6 @@ export function useFirestore<T extends { id?: string }>(
         ...partial,
         updatedAt: serverTimestamp(),
       });
-      
-      // Sync to sheet
-      await syncToSheet('update', Object.values(partial), 'Sheet1!A1');
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, path);
     }

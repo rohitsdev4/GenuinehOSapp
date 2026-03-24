@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Tag, User, IndianRupee, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFirestore } from '@/src/hooks/useFirestore';
@@ -7,35 +7,47 @@ import type { Deal } from '@/src/types';
 interface AddDealModalProps {
   isOpen: boolean;
   onClose: () => void;
+  deal?: Deal; // if provided, edit mode
 }
 
-export default function AddDealModal({ isOpen, onClose }: AddDealModalProps) {
-  const { add } = useFirestore<Deal>('deals');
+export default function AddDealModal({ isOpen, onClose, deal }: AddDealModalProps) {
+  const { add, update } = useFirestore<Deal>('deals');
   const [title, setTitle] = useState('');
   const [clientName, setClientName] = useState('');
   const [amount, setAmount] = useState('');
-  const [stage, setStage] = useState<'Lead' | 'Negotiation' | 'Won' | 'Lost'>('Lead');
+  const [stage, setStage] = useState<Deal['stage']>('Lead');
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const isEdit = !!deal;
+
+  useEffect(() => {
+    if (deal) {
+      setTitle(deal.title || '');
+      setClientName(deal.clientName || '');
+      setAmount(String(deal.amount || ''));
+      setStage(deal.stage || 'Lead');
+      setNotes(deal.notes || '');
+    } else {
+      setTitle(''); setClientName(''); setAmount(''); setStage('Lead'); setNotes('');
+    }
+  }, [deal]);
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title || !clientName || !amount) return;
-
     setLoading(true);
     try {
-      await add({
-        title,
-        clientName,
-        amount: Number(amount),
-        stage,
-        notes,
-      });
+      if (isEdit && deal?.id) {
+        await update(deal.id, { title, clientName, amount: Number(amount), stage, notes });
+      } else {
+        await add({ title, clientName, amount: Number(amount), stage, notes });
+      }
       onClose();
     } catch (error) {
-      console.error('Error adding deal:', error);
+      console.error('Error saving deal:', error);
     } finally {
       setLoading(false);
     }
@@ -58,7 +70,7 @@ export default function AddDealModal({ isOpen, onClose }: AddDealModalProps) {
           className="relative w-full max-w-lg bg-[#111520] border border-[#1e2a40] rounded-2xl shadow-2xl overflow-hidden"
         >
           <div className="flex items-center justify-between p-5 border-b border-[#1e2a40] bg-[#0b0e14]">
-            <h2 className="text-lg font-bold text-white font-['Syne']">Add New Deal</h2>
+            <h2 className="text-lg font-bold text-white font-['Syne']">{isEdit ? 'Edit Deal' : 'Add New Deal'}</h2>
             <button onClick={onClose} className="p-2 text-gray-400 hover:text-white bg-[#161c2a] rounded-lg transition">
               <X className="w-4 h-4" />
             </button>
@@ -148,7 +160,7 @@ export default function AddDealModal({ isOpen, onClose }: AddDealModalProps) {
                 Cancel
               </button>
               <button type="submit" disabled={loading} className="bg-[#00d4aa] text-[#07090f] px-6 py-2.5 rounded-xl font-bold hover:bg-[#00b894] transition shadow-[0_0_15px_rgba(0,212,170,0.3)] disabled:opacity-50">
-                {loading ? 'Saving...' : 'Save Deal'}
+                {loading ? 'Saving...' : isEdit ? 'Update Deal' : 'Save Deal'}
               </button>
             </div>
           </form>

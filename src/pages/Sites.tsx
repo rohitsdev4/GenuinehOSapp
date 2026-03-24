@@ -32,7 +32,14 @@ export default function Sites() {
       />
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {sites.map((site, i) => (
+        {sites.length === 0 ? (
+          <div className="col-span-full bg-[#111520] border border-[#1e2a40] rounded-2xl p-10 text-center">
+            <MapPin className="w-12 h-12 text-gray-700 mx-auto mb-4" />
+            <h3 className="text-lg font-bold text-white mb-2">No sites added yet</h3>
+            <p className="text-sm text-gray-500 max-w-xs mx-auto">Add your first project site to start tracking progress and timelines.</p>
+          </div>
+        ) : (
+          sites.map((site, i) => (
           <motion.div 
             key={site.id}
             initial={{ opacity: 0, y: 20 }}
@@ -77,7 +84,8 @@ export default function Sites() {
               </div>
             </div>
           </motion.div>
-        ))}
+        ))
+        )}
       </div>
 
       {isModalOpen && (

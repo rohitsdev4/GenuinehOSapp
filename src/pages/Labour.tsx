@@ -9,7 +9,7 @@ import { useFirestore } from '@/src/hooks/useFirestore';
 import type { LabourWorker } from '@/src/types';
 
 export default function Labour() {
-  const { data: workers, loading, update, remove: removeWorker } = useFirestore<LabourWorker>('workers');
+  const { data: workers, loading, update, remove: removeWorker } = useFirestore<LabourWorker>('labour');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingWorker, setEditingWorker] = useState<LabourWorker | undefined>(undefined);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -106,8 +106,10 @@ export default function Labour() {
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400`}>
-                      Active
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                      worker.status === 'Active' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-gray-500/10 text-gray-400'
+                    }`}>
+                      {worker.status}
                     </span>
                   </div>
                 </div>

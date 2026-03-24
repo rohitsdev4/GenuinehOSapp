@@ -5,6 +5,7 @@ import { useAuth } from '@/src/context/AuthContext';
 import { testGeminiConnection } from '@/src/lib/gemini';
 import { useFirestore } from '@/src/hooks/useFirestore';
 import { serverTimestamp } from 'firebase/firestore';
+import { fetchFromSheet } from '@/src/lib/sync';
 
 export default function Settings() {
   const { user, logout } = useAuth();
@@ -177,39 +178,59 @@ export default function Settings() {
   };
 
   const handleSync = async () => {
-    if (!sheetId) {
-      alert('Please enter a Google Sheet ID first.');
+    if (!sheetId || !sheetApiKey) {
+      alert('Please configure Google Sheets first.');
       return;
     }
     setIsSyncing(true);
     
     try {
-      const data = await fetchFromSheet('A2:J100'); // Assuming header is row 1
-      if (!data) throw new Error('Failed to fetch data');
+      const data = await fetchFromSheet('Main!A2:J1000');
+      if (!data || data.length === 0) {
+        alert('No data found in sheet or sheet is empty.');
+        setIsSyncing(false);
+        return;
+      }
+
+      let successCount = 0;
+      let errorCount = 0;
 
       for (const row of data) {
+        if (!row || row.length === 0) continue;
+        
         const [date, type, amount, category, description, labour, site, party, user, chatId] = row;
+        
+        if (!date || !type || !amount) continue;
+
         const entry = {
-          date,
+          date: date,
           amount: parseFloat(amount) || 0,
-          category,
-          notes: description,
-          partyName: party,
-          siteId: site,
+          category: category || 'Other',
+          notes: description || '',
+          partyName: party || '',
+          siteId: site || '',
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         };
 
-        if (type === 'Expense') {
-          await addExpense(entry);
-        } else if (type === 'Payment Received') {
-          await addPayment(entry);
+        try {
+          if (type === 'Expense') {
+            await addExpense(entry);
+            successCount++;
+          } else if (type === 'Payment Received') {
+            await addPayment(entry);
+            successCount++;
+          }
+        } catch (err) {
+          console.error('Error adding entry:', err);
+          errorCount++;
         }
       }
-      alert('Sync completed successfully!');
+      
+      alert(`Sync completed! ${successCount} records imported${errorCount > 0 ? `, ${errorCount} failed` : ''}.`);
     } catch (error) {
       console.error('Sync error:', error);
-      alert('Sync failed. Please check your configuration.');
+      alert('Sync failed. Please check your configuration and try again.');
     } finally {
       setIsSyncing(false);
     }

@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
-import { callGemini, buildContext, type GeminiModel } from '@/src/lib/gemini';
+import { callGemini, buildFullContext, type GeminiModel } from '@/src/lib/gemini';
 import { useFirestore } from '@/src/hooks/useFirestore';
-import type { Payment, Expense, Receivable, Task } from '@/src/types';
+import { fetchFromSheet } from '@/src/lib/sync';
+import type { Payment, Expense, Receivable, Task, Site, LabourWorker, Client, Deal, DiaryEntry } from '@/src/types';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { Send, Bot, User, Loader2, Sparkles, Trash2 } from 'lucide-react';
+import { Send, Bot, User, Loader2, Sparkles, Trash2, BookText } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
 
@@ -16,13 +17,17 @@ interface Message {
 
 const QUICK_PROMPTS = [
   'Aaj ka action plan do',
-  'Cash flow analysis karo',
-  'Receivable recovery tips',
-  'Deal coaching chahiye',
-  'Factory planning advice',
-  'Monthly P&L samjhao',
-  'Expenses kaise kam karein',
+  'Is month ka P&L batao',
+  'Pending receivables list karo',
+  'Expenses summary dikhao',
+  'Active sites status',
+  'Labour balance check karo',
+  'Deal pipeline dikhao',
+  'Aaj ki diary entry likho',
+  'Market research — hospital tenders Bihar',
+  'Cash flow forecast karo',
   'Motivate karo bhai 💪',
+  'Weekly review karo',
 ];
 
 const STORAGE_KEY = 'genuineos_chat_history';
@@ -31,28 +36,37 @@ export default function AIAssistant() {
   const [messages, setMessages] = useState<Message[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error('Failed to parse chat history', e);
-      }
+      try { return JSON.parse(saved); } catch { /* ignore */ }
     }
     return [{
       role: 'ai',
-      text: 'Jai Shree Ram Rohit bhai! 🙏\n\nMain GenuineOS AI hoon — Gemini 3.1 Flash-Lite se powered. Aapka business advisor!\n\nKya help chahiye aaj?',
+      text: 'Jai Shree Ram Rohit bhai! 🙏\n\nMain GenuineOS AI hoon — aapka full business manager!\n\nMain aapka poora data dekh sakta hoon aur kuch bhi add/update/delete kar sakta hoon. Kya help chahiye?',
       time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
     }];
   });
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [model, setModel] = useState<GeminiModel>('gemini-3.1-flash-lite-preview');
+  const [sheetData, setSheetData] = useState<any[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Get live data for context
-  const { data: payments, add: addPayment } = useFirestore<Payment>('payments');
-  const { data: expenses, add: addExpense } = useFirestore<Expense>('expenses');
-  const { data: receivables, add: addReceivable } = useFirestore<Receivable>('receivables');
-  const { data: tasks, add: addTask } = useFirestore<Task>('tasks');
+  // All Firestore collections
+  const { data: payments, add: addPayment, update: updatePayment, remove: deletePayment } = useFirestore<Payment>('payments');
+  const { data: expenses, add: addExpense, update: updateExpense, remove: deleteExpense } = useFirestore<Expense>('expenses');
+  const { data: receivables, add: addReceivable, update: updateReceivable } = useFirestore<Receivable>('receivables');
+  const { data: tasks, add: addTask, update: updateTask, remove: deleteTask } = useFirestore<Task>('tasks');
+  const { data: sites, add: addSite, update: updateSite } = useFirestore<Site>('sites');
+  const { data: labour, add: addLabour, update: updateLabour } = useFirestore<LabourWorker>('labour');
+  const { data: clients, add: addClient } = useFirestore<Client>('clients');
+  const { data: deals, add: addDeal, update: updateDeal } = useFirestore<Deal>('deals');
+  const { data: diary, add: addDiaryEntry, update: updateDiaryEntry } = useFirestore<DiaryEntry>('diary');
+
+  // Load sheet data on mount
+  useEffect(() => {
+    fetchFromSheet('Main!A2:J1000').then(data => {
+      if (data) setSheetData(data);
+    });
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
@@ -63,42 +77,201 @@ export default function AIAssistant() {
   }, [messages, loading]);
 
   const clearHistory = () => {
-    const initialMsg: Message = {
+    const init: Message = {
       role: 'ai',
-      text: 'Jai Shree Ram Rohit bhai! 🙏\n\nMain GenuineOS AI hoon — Gemini 3.1 Flash-Lite se powered. Aapka business advisor!\n\nKya help chahiye aaj?',
+      text: 'Chat clear ho gaya! Kya help chahiye?',
       time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
     };
-    setMessages([initialMsg]);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([initialMsg]));
+    setMessages([init]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([init]));
   };
 
-  const getContext = () => {
-    const now = new Date();
-    const thisMonth = (arr: Array<{date: string; amount: number}>) =>
-      arr.filter(x => {
-        const d = new Date(x.date);
-        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-      }).reduce((s, x) => s + x.amount, 0);
+  const getContext = () => buildFullContext({
+    expenses, payments, receivables, tasks, sites,
+    labour, clients, deals, sheetData, diary,
+  });
 
-    const criticalReceivables = receivables
-      .filter(r => {
-        const days = Math.floor((Date.now() - new Date(r.dueDate).getTime()) / 86400000);
-        return days > 60 && r.status !== 'Collected';
-      })
-      .map(r => ({
-        party: r.partyName,
-        amount: r.amount - r.amountCollected,
-        days: Math.floor((Date.now() - new Date(r.dueDate).getTime()) / 86400000),
-      }));
+  // ─── Tool Executor ──────────────────────────────────────────────────────────
+  const executeTool = async (name: string, args: any): Promise<string> => {
+    const today = new Date().toISOString().split('T')[0];
 
-    return buildContext({
-      thisMonthIncome: thisMonth(payments as any),
-      thisMonthExpenses: thisMonth(expenses as any),
-      criticalReceivables,
-      pendingTasks: tasks.filter(t => t.status !== 'Completed').length,
-    });
+    switch (name) {
+      // EXPENSES
+      case 'addExpense': {
+        await addExpense({
+          amount: args.amount,
+          category: args.category,
+          partyName: args.partyName || '',
+          siteId: args.siteId || '',
+          notes: args.notes || 'Added via AI',
+          date: args.date || today,
+        } as any);
+        return `✅ Expense added: ₹${args.amount} | ${args.category} | ${args.partyName || '-'}`;
+      }
+      case 'updateExpense': {
+        const { id, ...rest } = args;
+        await updateExpense(id, rest);
+        return `✅ Expense [${id}] updated`;
+      }
+      case 'deleteExpense': {
+        await deleteExpense(args.id);
+        return `🗑️ Expense [${args.id}] deleted`;
+      }
+
+      // PAYMENTS
+      case 'addPayment': {
+        await addPayment({
+          amount: args.amount,
+          category: args.category || 'Payment Received',
+          partyName: args.partyName,
+          siteId: args.siteId || '',
+          notes: args.notes || 'Added via AI',
+          date: args.date || today,
+        } as any);
+        return `✅ Payment added: ₹${args.amount} from ${args.partyName}`;
+      }
+      case 'updatePayment': {
+        const { id, ...rest } = args;
+        await updatePayment(id, rest);
+        return `✅ Payment [${id}] updated`;
+      }
+      case 'deletePayment': {
+        await deletePayment(args.id);
+        return `🗑️ Payment [${args.id}] deleted`;
+      }
+
+      // TASKS
+      case 'addTask': {
+        await addTask({
+          title: args.title,
+          priority: args.priority,
+          dueDate: args.dueDate || today,
+          status: 'Pending',
+          notes: args.notes || 'Added via AI',
+        } as any);
+        return `✅ Task added: "${args.title}" (${args.priority})`;
+      }
+      case 'updateTask': {
+        const { id, ...rest } = args;
+        await updateTask(id, rest);
+        return `✅ Task [${id}] updated`;
+      }
+      case 'deleteTask': {
+        await deleteTask(args.id);
+        return `🗑️ Task [${args.id}] deleted`;
+      }
+
+      // RECEIVABLES
+      case 'addReceivable': {
+        await addReceivable({
+          partyName: args.partyName,
+          amount: args.amount,
+          dueDate: args.dueDate,
+          amountCollected: 0,
+          status: 'Pending',
+          notes: args.notes || 'Added via AI',
+        } as any);
+        return `✅ Receivable added: ₹${args.amount} from ${args.partyName}`;
+      }
+      case 'updateReceivable': {
+        const { id, ...rest } = args;
+        await updateReceivable(id, rest);
+        return `✅ Receivable [${id}] updated`;
+      }
+
+      // SITES
+      case 'addSite': {
+        await addSite({
+          name: args.name,
+          location: args.location,
+          status: args.status || 'Active',
+          budget: args.budget || 0,
+          progress: 0,
+          startDate: args.startDate || today,
+          notes: args.notes || '',
+        } as any);
+        return `✅ Site added: ${args.name} (${args.location})`;
+      }
+      case 'updateSite': {
+        const { id, ...rest } = args;
+        await updateSite(id, rest);
+        return `✅ Site [${id}] updated`;
+      }
+
+      // LABOUR
+      case 'addLabour': {
+        await addLabour({
+          name: args.name,
+          phone: args.phone || '',
+          dailyWage: args.dailyWage,
+          balance: 0,
+          status: 'Active',
+          notes: args.notes || '',
+        } as any);
+        return `✅ Labour added: ${args.name} (₹${args.dailyWage}/day)`;
+      }
+      case 'updateLabour': {
+        const { id, ...rest } = args;
+        await updateLabour(id, rest);
+        return `✅ Labour [${id}] updated`;
+      }
+
+      // CLIENTS
+      case 'addClient': {
+        await addClient({
+          name: args.name,
+          company: args.company || '',
+          phone: args.phone || '',
+          email: args.email || '',
+          address: args.address || '',
+          notes: args.notes || '',
+        } as any);
+        return `✅ Client added: ${args.name}`;
+      }
+
+      // DEALS
+      case 'addDeal': {
+        await addDeal({
+          title: args.title,
+          clientName: args.clientName,
+          amount: args.amount,
+          stage: args.stage,
+          notes: args.notes || '',
+        } as any);
+        return `✅ Deal added: "${args.title}" ₹${args.amount} (${args.stage})`;
+      }
+      case 'updateDeal': {
+        const { id, ...rest } = args;
+        await updateDeal(id, rest);
+        return `✅ Deal [${id}] updated`;
+      }
+
+      // DIARY / JOURNAL
+      case 'addDiaryEntry': {
+        await addDiaryEntry({
+          content: args.content,
+          mood: args.mood || 'Neutral',
+          date: args.date || today,
+        } as any);
+        return `📔 Diary entry saved for ${args.date || today} (Mood: ${args.mood || 'Neutral'})`;
+      }
+      case 'updateDiaryEntry': {
+        const { id, ...rest } = args;
+        await updateDiaryEntry(id, rest);
+        return `📔 Diary entry [${id}] updated`;
+      }
+
+      // QUERY (AI already has context, just acknowledge)
+      case 'queryData': {
+        return `📊 Data for "${args.collection}" is available in context above.`;
+      }
+
+      default:
+        return `⚠️ Unknown tool: ${name}`;
+    }
   };
 
+  // ─── Send Message ───────────────────────────────────────────────────────────
   const sendMessage = async (text: string) => {
     if (!text.trim() || loading) return;
     const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
@@ -112,65 +285,26 @@ export default function AIAssistant() {
         prompt: text,
         model,
         context: getContext(),
-        maxTokens: model === 'gemini-3.1-pro-preview' ? 1000 : 600,
+        maxTokens: model === 'gemini-3.1-pro-preview' ? 1200 : 800,
         history: messages.map(m => ({ role: m.role, text: m.text })),
       });
-      
-      let aiText = res.text;
 
-      if (res.functionCalls && res.functionCalls.length > 0) {
+      let aiText = res.text || '';
+      const toolResults: string[] = [];
+
+      if (res.functionCalls?.length) {
         for (const call of res.functionCalls) {
-          if (call.name === 'addExpense') {
-            const args = call.args as any;
-            await addExpense({
-              amount: args.amount,
-              category: args.category,
-              partyName: args.partyName,
-              date: new Date().toISOString().split('T')[0],
-              notes: args.notes || 'Added via AI Assistant',
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            } as any);
-            aiText += `\n\n✅ Added Expense: ₹${args.amount} for ${args.category} (${args.partyName})`;
-          } else if (call.name === 'addPayment') {
-            const args = call.args as any;
-            await addPayment({
-              amount: args.amount,
-              category: args.category,
-              partyName: args.partyName,
-              date: new Date().toISOString().split('T')[0],
-              notes: args.notes || 'Added via AI Assistant',
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            } as any);
-            aiText += `\n\n✅ Added Payment Received: ₹${args.amount} via ${args.category} (${args.partyName})`;
-          } else if (call.name === 'addTask') {
-            const args = call.args as any;
-            await addTask({
-              title: args.title,
-              priority: args.priority,
-              dueDate: args.dueDate || new Date().toISOString().split('T')[0],
-              status: 'Pending',
-              notes: args.notes || 'Added via AI Assistant',
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            } as any);
-            aiText += `\n\n✅ Added Task: ${args.title} (${args.priority} Priority)`;
-          } else if (call.name === 'addReceivable') {
-            const args = call.args as any;
-            await addReceivable({
-              partyName: args.partyName,
-              amount: args.amount,
-              dueDate: args.dueDate,
-              amountCollected: 0,
-              status: 'Pending',
-              notes: args.notes || 'Added via AI Assistant',
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            } as any);
-            aiText += `\n\n✅ Added Receivable: ₹${args.amount} from ${args.partyName} (Due: ${args.dueDate})`;
+          try {
+            const result = await executeTool(call.name, call.args || {});
+            toolResults.push(result);
+          } catch (err: any) {
+            toolResults.push(`❌ ${call.name} failed: ${err.message}`);
           }
         }
+      }
+
+      if (toolResults.length > 0) {
+        aiText = (aiText ? aiText + '\n\n' : '') + toolResults.join('\n');
       }
 
       setMessages(prev => [...prev, {
@@ -181,20 +315,9 @@ export default function AIAssistant() {
       }]);
     } catch (err: any) {
       let errorText = '❌ AI abhi available nahi. Internet check karo.';
-      
-      if (err.message === 'INVALID_API_KEY') {
-        errorText = '❌ Invalid API Key! Settings mein jaakar sahi key enter karein.';
-      } else if (err.message === 'RATE_LIMIT') {
-        errorText = '⚠️ Quota khatam ho gayi. Thodi der baad try karo ya model badlo.';
-      } else if (err.message?.includes('SAFETY')) {
-        errorText = '🛡️ Safety filters ne block kiya. Kuch aur pucho.';
-      }
-
-      setMessages(prev => [...prev, {
-        role: 'ai',
-        text: errorText,
-        time,
-      }]);
+      if (err.message === 'INVALID_API_KEY') errorText = '❌ Invalid API Key! Settings mein jaakar sahi key enter karein.';
+      else if (err.message === 'RATE_LIMIT') errorText = '⚠️ Quota khatam ho gayi. Thodi der baad try karo ya model badlo.';
+      setMessages(prev => [...prev, { role: 'ai', text: errorText, time }]);
     } finally {
       setLoading(false);
     }
@@ -202,16 +325,15 @@ export default function AIAssistant() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-160px)] lg:h-[calc(100vh-120px)]">
-      <PageHeader 
-        title="AI Assistant" 
-        subtitle="Powered by Google Gemini · Free tier"
+      <PageHeader
+        title="AI Assistant"
+        subtitle="Full data access · Add, update, delete anything"
         actions={
           <div className="flex items-center gap-2">
             <select
               value={model}
               onChange={e => setModel(e.target.value as GeminiModel)}
-              className="bg-[#111520] border border-[#1e2a40] text-xs text-gray-300
-                         rounded-lg px-3 py-2 outline-none focus:border-[#00d4aa] transition"
+              className="bg-[#111520] border border-[#1e2a40] text-xs text-gray-300 rounded-lg px-3 py-2 outline-none focus:border-[#00d4aa] transition"
             >
               <option value="gemini-3.1-flash-lite-preview">⚡ Flash-Lite (1000/day)</option>
               <option value="gemini-3-flash-preview">🔵 Flash (250/day)</option>
@@ -234,9 +356,7 @@ export default function AIAssistant() {
           <button
             key={p}
             onClick={() => sendMessage(p)}
-            className="flex-shrink-0 text-xs border border-[#1e2a40] bg-[#111520]
-                       text-gray-400 px-4 py-2 rounded-full hover:border-[#00d4aa]
-                       hover:text-[#00d4aa] transition font-semibold flex items-center gap-2 cursor-pointer"
+            className="flex-shrink-0 text-xs border border-[#1e2a40] bg-[#111520] text-gray-400 px-4 py-2 rounded-full hover:border-[#00d4aa] hover:text-[#00d4aa] transition font-semibold flex items-center gap-2 cursor-pointer"
           >
             <Sparkles className="w-3 h-3" />
             {p}
@@ -248,8 +368,8 @@ export default function AIAssistant() {
       <div className="flex-1 overflow-y-auto space-y-6 pr-2 mb-4 custom-scrollbar">
         <AnimatePresence initial={false}>
           {messages.map((msg, i) => (
-            <motion.div 
-              key={i} 
+            <motion.div
+              key={i}
               initial={{ opacity: 0, x: msg.role === 'user' ? 20 : -20 }}
               animate={{ opacity: 1, x: 0 }}
               className={cn("flex gap-3", msg.role === 'user' ? "flex-row-reverse" : "flex-row")}
@@ -301,17 +421,13 @@ export default function AIAssistant() {
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage(input)}
-          placeholder="Kuch bhi pucho business ke baare mein..."
-          className="w-full bg-[#161c2a] border border-[#1e2a40] rounded-2xl
-                     pl-4 pr-14 py-4 text-sm text-white outline-none
-                     focus:border-[#00d4aa] transition placeholder-gray-600 shadow-xl"
+          placeholder="Kuch bhi pucho ya karo — data add, update, delete, analysis..."
+          className="w-full bg-[#161c2a] border border-[#1e2a40] rounded-2xl pl-4 pr-14 py-4 text-sm text-white outline-none focus:border-[#00d4aa] transition placeholder-gray-600 shadow-xl"
         />
         <button
           onClick={() => sendMessage(input)}
           disabled={loading || !input.trim()}
-          className="absolute right-2 top-1/2 -translate-y-1/2 bg-[#00d4aa] text-[#07090f] p-2.5 rounded-xl
-                     font-bold hover:bg-[#00b894] transition
-                     disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          className="absolute right-2 top-1/2 -translate-y-1/2 bg-[#00d4aa] text-[#07090f] p-2.5 rounded-xl font-bold hover:bg-[#00b894] transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
         >
           <Send className="w-4 h-4" />
         </button>

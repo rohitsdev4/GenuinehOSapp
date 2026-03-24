@@ -8,52 +8,18 @@ async function startServer() {
 
   app.use(express.json());
 
-  // API Route for Google Sheets Sync
-  app.post('/api/sync-sheets', async (req, res) => {
-    const { sheetId, apiKey, data, action, range } = req.body;
-    
-    try {
-      let url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range || 'A1'}`;
-      let method = 'POST';
-      let body: any = {
-        values: [data]
-      };
-
-      if (action === 'append') {
-        url += ':append?valueInputOption=RAW&key=' + apiKey;
-      } else if (action === 'update') {
-        url += '?valueInputOption=RAW&key=' + apiKey;
-        method = 'PUT';
-      }
-
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error?.message || 'Sheets API error');
-
-      res.json({ success: true, result });
-    } catch (error) {
-      console.error('Sync error:', error);
-      res.status(500).json({ error: 'Failed to sync with Google Sheets' });
-    }
-  });
-
-  // API Route to fetch data from Google Sheets
+  // API Route to fetch data from Google Sheets (read-only)
   app.get('/api/fetch-sheets', async (req, res) => {
     const { sheetId, apiKey, range } = req.query;
     
     try {
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range || 'A1:J100'}?key=${apiKey}`;
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range || 'Main!A2:J1000'}?key=${apiKey}`;
       const response = await fetch(url);
       const result = await response.json();
       
       if (!response.ok) throw new Error(result.error?.message || 'Sheets API error');
 
-      res.json({ success: true, data: result.values });
+      res.json({ success: true, data: result.values || [] });
     } catch (error) {
       console.error('Fetch error:', error);
       res.status(500).json({ error: 'Failed to fetch from Google Sheets' });
