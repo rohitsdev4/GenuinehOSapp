@@ -15,8 +15,14 @@ export default function Sites() {
   const { data: expenses } = useFirestore<Expense>('expenses');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedSite, setSelectedSite] = useState<Site | null>(null);
+  const [filter, setFilter] = useState<'All' | 'Active' | 'Completed'>('All');
 
   if (loading) return <div className="p-8 text-center text-gray-500">Loading sites...</div>;
+
+  const filteredSites = sites.filter(site => {
+    if (filter === 'All') return true;
+    return site.status === filter;
+  });
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-10">
@@ -33,16 +39,32 @@ export default function Sites() {
           </button>
         }
       />
+
+      <div className="flex gap-2 border-b border-[#1e2a40] pb-4">
+        {['All', 'Active', 'Completed'].map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setFilter(tab as any)}
+            className={`px-4 py-2 rounded-xl text-sm font-bold transition ${
+              filter === tab
+                ? 'bg-[#00d4aa]/10 text-[#00d4aa] border border-[#00d4aa]/20'
+                : 'bg-[#111520] text-gray-400 border border-[#1e2a40] hover:text-white'
+            }`}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {sites.length === 0 ? (
+        {filteredSites.length === 0 ? (
           <div className="col-span-full bg-[#111520] border border-[#1e2a40] rounded-2xl p-10 text-center">
             <MapPin className="w-12 h-12 text-gray-700 mx-auto mb-4" />
-            <h3 className="text-lg font-bold text-white mb-2">No sites recorded yet</h3>
-            <p className="text-sm text-gray-500 max-w-xs mx-auto">Sync from Telegram bot sheet or create one manually.</p>
+            <h3 className="text-lg font-bold text-white mb-2">No sites found</h3>
+            <p className="text-sm text-gray-500 max-w-xs mx-auto">Try changing your filter or add a new site.</p>
           </div>
         ) : (
-          sites.map((site, i) => {
+          filteredSites.map((site, i) => {
             const financials = buildSiteFinancials(site, payments, expenses);
             const progress = financials.total > 0 ? Math.min(Math.round((financials.received / financials.total) * 100), 100) : 0;
             

@@ -81,6 +81,7 @@ export interface LabourWorker {
   monthlyWage?: number;
   balance: number; // dynamically computed in UI, kept for legacy compatibility
   totalAccrued?: number; // the sum of all 'Mark Present' and 'Add Month' actions
+  localPayments?: { date: string; amount: number; note?: string }[]; // local app payments
   status: 'Active' | 'Inactive';
   notes?: string;
   createdAt?: string;
