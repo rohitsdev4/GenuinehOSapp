@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ChangeEvent } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
 import { Settings as SettingsIcon, LogOut, Shield, Moon, Key, Save, Globe, RefreshCw, CheckCircle2, AlertCircle, Upload } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
@@ -6,6 +6,85 @@ import { testGeminiConnection } from '@/src/lib/gemini';
 import { useFirestore } from '@/src/hooks/useFirestore';
 import { serverTimestamp } from 'firebase/firestore';
 import { fetchFromSheet } from '@/src/lib/sync';
+
+type ImportedRow = {
+  date: string;
+  type: string;
+  amount: number;
+  category: string;
+  description: string;
+  labour: string;
+  site: string;
+  party: string;
+  user: string;
+};
+
+const normalizeKey = (value: string) =>
+  value.toLowerCase().replace(/\s+/g, '').replace(/[^a-z]/g, '');
+
+const parseAmount = (raw: string) => {
+  if (!raw) return 0;
+  const cleaned = String(raw).replace(/[,₹\s]/g, '');
+  const parsed = Number.parseFloat(cleaned);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const mapRowByHeader = (row: string[], map: Record<string, number>) => {
+  const pick = (aliases: string[]) => {
+    for (const alias of aliases) {
+      const index = map[alias];
+      if (index !== undefined) return row[index] ?? '';
+    }
+    return '';
+  };
+
+  return {
+    date: pick(['date']),
+    type: pick(['type']),
+    amount: parseAmount(pick(['amount'])),
+    category: pick(['category']) || 'Other',
+    description: pick(['description', 'discription', 'details', 'note', 'notes']),
+    labour: pick(['labour', 'labor']),
+    site: pick(['site']),
+    party: pick(['party']),
+    user: pick(['user', 'username']),
+  } as ImportedRow;
+};
+
+const mapRowByPosition = (row: string[]) => {
+  const [date, type, amount, category, description, labour, site, party, user] = row;
+  return {
+    date: date ?? '',
+    type: type ?? '',
+    amount: parseAmount(amount ?? ''),
+    category: category || 'Other',
+    description: description ?? '',
+    labour: labour ?? '',
+    site: site ?? '',
+    party: party ?? '',
+    user: user ?? '',
+  } as ImportedRow;
+};
+
+const normalizeImportedRows = (rows: string[][]): ImportedRow[] => {
+  if (!rows.length) return [];
+
+  const headerRow = rows[0].map((cell) => normalizeKey(cell || ''));
+  const headerMap: Record<string, number> = {};
+  headerRow.forEach((name, index) => {
+    if (name) headerMap[name] = index;
+  });
+
+  const looksLikeHeader =
+    headerMap.date !== undefined &&
+    headerMap.type !== undefined &&
+    headerMap.amount !== undefined;
+
+  const dataRows = looksLikeHeader ? rows.slice(1) : rows;
+  return dataRows
+    .filter((row) => row && row.some((cell) => String(cell || '').trim()))
+    .map((row) => (looksLikeHeader ? mapRowByHeader(row, headerMap) : mapRowByPosition(row)));
+};
 
 export default function Settings() {
   const { user, logout } = useAuth();
@@ -48,7 +127,7 @@ export default function Settings() {
     }
   }, []);
 
-  const handleCSVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCSVUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -70,11 +149,12 @@ export default function Settings() {
         // Map CSV to Firestore
         const data = {
           date: entry.Date,
-          amount: parseFloat(entry.Amount) || 0,
+          amount: parseAmount(entry.Amount),
           category: entry.Category,
-          notes: entry.Discription,
+          notes: entry.Discription || entry.Description || '',
           partyName: entry.Party,
           siteId: entry.Site,
+          partner: entry.User || '',
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         };
@@ -185,7 +265,7 @@ export default function Settings() {
     setIsSyncing(true);
     
     try {
-      const data = await fetchFromSheet('Main!A2:J1000');
+      const data = await fetchFromSheet('Main!A1:J1000');
       if (!data || data.length === 0) {
         alert('No data found in sheet or sheet is empty.');
         setIsSyncing(false);
@@ -194,32 +274,46 @@ export default function Settings() {
 
       let successCount = 0;
       let errorCount = 0;
+      let skippedCount = 0;
 
-      for (const row of data) {
-        if (!row || row.length === 0) continue;
-        
-        const [date, type, amount, category, description, labour, site, party, user, chatId] = row;
-        
-        if (!date || !type || !amount) continue;
+      const importedRows = normalizeImportedRows(data);
 
+      if (importedRows.length === 0) {
+        alert('Sheet has no valid transaction rows. Please verify Date, Type, and Amount columns.');
+        setIsSyncing(false);
+        return;
+      }
+
+      for (const row of importedRows) {
+        if (!row.date || !row.type || !row.amount) {
+          skippedCount++;
+          continue;
+        }
+
+        const normalizedType = row.type.trim().toLowerCase();
         const entry = {
-          date: date,
-          amount: parseFloat(amount) || 0,
-          category: category || 'Other',
-          notes: description || '',
-          partyName: party || '',
-          siteId: site || '',
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
+          date: row.date,
+          amount: row.amount,
+          category: row.category || 'Other',
+          notes: row.description || row.labour || '',
+          partyName: row.party || '',
+          siteId: row.site || '',
+          partner: row.user || '',
         };
 
         try {
-          if (type === 'Expense') {
+          if (normalizedType === 'expense') {
             await addExpense(entry);
             successCount++;
-          } else if (type === 'Payment Received') {
+          } else if (
+            normalizedType === 'payment received' ||
+            normalizedType === 'payment' ||
+            normalizedType === 'income'
+          ) {
             await addPayment(entry);
             successCount++;
+          } else {
+            skippedCount++;
           }
         } catch (err) {
           console.error('Error adding entry:', err);
@@ -227,7 +321,11 @@ export default function Settings() {
         }
       }
       
-      alert(`Sync completed! ${successCount} records imported${errorCount > 0 ? `, ${errorCount} failed` : ''}.`);
+      alert(
+        `Sync completed! ${successCount} imported` +
+        `${skippedCount > 0 ? `, ${skippedCount} skipped` : ''}` +
+        `${errorCount > 0 ? `, ${errorCount} failed` : ''}.`
+      );
     } catch (error) {
       console.error('Sync error:', error);
       alert('Sync failed. Please check your configuration and try again.');

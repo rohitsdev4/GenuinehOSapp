@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { Receipt, Plus, Search, Filter, ArrowDownRight, User, Trash2, Edit2 } from 'lucide-react';
+import { Plus, Search, ArrowDownRight, User, Trash2, Edit2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { formatCurrency, formatDate } from '@/src/lib/utils';
 import AddExpenseModal from '@/src/components/modals/AddExpenseModal';
@@ -32,11 +32,29 @@ export default function Expenses() {
     setEditingExpense(undefined);
   };
 
-  const filteredExpenses = expenses.filter(expense => 
-    (expense.notes?.toLowerCase().includes(searchTerm.toLowerCase()) || '') ||
-    expense.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (expense.partyName?.toLowerCase().includes(searchTerm.toLowerCase()) || '')
-  );
+  const parseDateValue = (value?: string) => {
+    if (!value) return 0;
+    const time = new Date(value).getTime();
+    return Number.isFinite(time) ? time : 0;
+  };
+
+  const term = searchTerm.trim().toLowerCase();
+  const filteredExpenses = expenses
+    .filter((expense) => {
+      if (!term) return true;
+      return [
+        expense.notes,
+        expense.category,
+        expense.partyName,
+        expense.siteId,
+        expense.partner,
+        expense.date,
+        String(expense.amount),
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(term));
+    })
+    .sort((a, b) => parseDateValue(b.date) - parseDateValue(a.date));
 
   if (loading) return <div className="p-8 text-center text-gray-500">Loading expenses...</div>;
 
@@ -68,10 +86,7 @@ export default function Expenses() {
               className="w-full bg-[#111520] border border-[#1e2a40] rounded-xl pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-[#00d4aa] transition"
             />
           </div>
-          <button className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition bg-[#111520] border border-[#1e2a40] px-4 py-2 rounded-xl w-full sm:w-auto justify-center">
-            <Filter className="w-4 h-4" />
-            Filter
-          </button>
+          <div className="text-[11px] text-gray-500 font-mono">Newest first</div>
         </div>
 
         <div className="overflow-x-auto">

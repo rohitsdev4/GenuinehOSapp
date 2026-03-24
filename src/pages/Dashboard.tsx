@@ -2,7 +2,7 @@ import { useFirestore } from '@/src/hooks/useFirestore';
 import type { Payment, Expense, Receivable, Site, Task, Deal, Habit } from '@/src/types';
 import { motion } from 'motion/react';
 import { cn, formatCurrency } from '@/src/lib/utils';
-import { CheckSquare, BarChart3, PieChart as PieChartIcon, Sparkles, Activity, Users, Wallet } from 'lucide-react';
+import { CheckSquare, BarChart3, PieChart as PieChartIcon, Sparkles, Activity, Users } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
 export default function Dashboard() {
@@ -15,11 +15,22 @@ export default function Dashboard() {
   const { data: habits, update: updateHabit } = useFirestore<Habit>('habits');
 
   const now = new Date();
+  const toAmount = (value: unknown) => {
+    const numeric = typeof value === 'number' ? value : Number.parseFloat(String(value ?? 0));
+    return Number.isFinite(numeric) ? numeric : 0;
+  };
+
   const thisMonth = (arr: any[]) =>
     arr.filter(x => {
       const d = new Date(x.date || x.createdAt);
       return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    }).reduce((s, x) => s + (x.amount || 0), 0);
+    }).reduce((s, x) => s + toAmount(x.amount), 0);
+
+  const isThisMonth = (value?: string) => {
+    if (!value) return false;
+    const d = new Date(value);
+    return !Number.isNaN(d.getTime()) && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  };
 
   const income = thisMonth(payments);
   const expense = thisMonth(expenses);
@@ -39,11 +50,20 @@ export default function Dashboard() {
   const activeDeals = deals.filter(d => d.stage !== 'Won' && d.stage !== 'Lost').length;
   const pipelineValue = deals.filter(d => d.stage !== 'Won' && d.stage !== 'Lost').reduce((s, d) => s + d.amount, 0);
 
-  // User Balances Calculation
-  const partners = ['Rohit', 'Gulshan'];
+  const allTimeIncome = payments.reduce((sum, p) => sum + toAmount(p.amount), 0);
+  const allTimeExpense = expenses.reduce((sum, e) => sum + toAmount(e.amount), 0);
+  const allTimeNet = allTimeIncome - allTimeExpense;
+  
+  // User Balances Calculation (derived from real synced/user data)
+  const partners = Array.from(
+    new Set([
+      ...payments.map((p) => (p.partner || '').trim()),
+      ...expenses.map((e) => (e.partner || '').trim()),
+    ].filter(Boolean))
+  );
   const userBalances = partners.map(name => {
-    const userPayments = payments.filter(p => p.partner === name).reduce((s, p) => s + p.amount, 0);
-    const userExpenses = expenses.filter(e => e.partner === name).reduce((s, e) => s + e.amount, 0);
+    const userPayments = payments.filter(p => p.partner === name).reduce((s, p) => s + toAmount(p.amount), 0);
+    const userExpenses = expenses.filter(e => e.partner === name).reduce((s, e) => s + toAmount(e.amount), 0);
     const userTxns = payments.filter(p => p.partner === name).length + expenses.filter(e => e.partner === name).length;
     return {
       name,
@@ -71,17 +91,17 @@ export default function Dashboard() {
   payments.forEach(p => {
     const d = new Date(p.date);
     const m = last6Months.find(m => m.month === d.getMonth() && m.year === d.getFullYear());
-    if (m) m.Income += p.amount;
+    if (m) m.Income += toAmount(p.amount);
   });
 
   expenses.forEach(e => {
     const d = new Date(e.date);
     const m = last6Months.find(m => m.month === d.getMonth() && m.year === d.getFullYear());
-    if (m) m.Expenses += e.amount;
+    if (m) m.Expenses += toAmount(e.amount);
   });
 
   const expenseCategories = expenses.reduce((acc, curr) => {
-    acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
+    acc[curr.category] = (acc[curr.category] || 0) + toAmount(curr.amount);
     return acc;
   }, {} as Record<string, number>);
 
@@ -128,7 +148,7 @@ export default function Dashboard() {
           <h3 className="text-xl sm:text-2xl font-black text-[#00d4aa]">{formatCurrency(income)}</h3>
           <p className="text-[10px] sm:text-xs text-gray-500 font-bold tracking-widest mt-1 mb-3 uppercase">This Month Income</p>
           <span className="bg-[#00d4aa]/10 text-[#00d4aa] text-[10px] px-2.5 py-1 rounded-full font-bold">
-            {payments.filter(p => new Date(p.date).getMonth() === now.getMonth()).length} txns
+            {payments.filter(p => isThisMonth(p.date)).length} txns
           </span>
         </motion.div>
 
@@ -164,9 +184,26 @@ export default function Dashboard() {
           <h3 className="text-xl sm:text-2xl font-black text-[#8b5cf6]">{formatCurrency(totalBalanceInHand)}</h3>
           <p className="text-[10px] sm:text-xs text-gray-500 font-bold tracking-widest mt-1 mb-3 uppercase">Balance in Hand</p>
           <span className="bg-[#8b5cf6]/10 text-[#8b5cf6] text-[10px] px-2.5 py-1 rounded-full font-bold">
-            All Partners
+            {partners.length > 0 ? `${partners.length} partners` : 'No partners yet'}
           </span>
         </motion.div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
+        <div className="bg-[#111520] border border-[#1e2a40] rounded-2xl p-4">
+          <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">All-Time Income</p>
+          <p className="text-lg font-black text-emerald-400">{formatCurrency(allTimeIncome)}</p>
+        </div>
+        <div className="bg-[#111520] border border-[#1e2a40] rounded-2xl p-4">
+          <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">All-Time Expenses</p>
+          <p className="text-lg font-black text-rose-400">{formatCurrency(allTimeExpense)}</p>
+        </div>
+        <div className="bg-[#111520] border border-[#1e2a40] rounded-2xl p-4">
+          <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">All-Time Net</p>
+          <p className={cn("text-lg font-black", allTimeNet >= 0 ? "text-emerald-400" : "text-rose-400")}>
+            {formatCurrency(allTimeNet)}
+          </p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -237,10 +274,12 @@ export default function Dashboard() {
         className="bg-[#111520] border border-[#1e2a40] rounded-2xl p-5 shadow-lg mb-8">
         <h3 className="text-[11px] font-bold text-gray-400 tracking-widest uppercase mb-6 flex items-center gap-2">
           <Users className="w-4 h-4" />
-          User Balances (YEO Partners)
+          User Balances
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {userBalances.map((user, idx) => (
+          {userBalances.length === 0 ? (
+            <p className="text-sm text-gray-500 font-mono">No partner/user data found in payments or expenses yet.</p>
+          ) : userBalances.map((user, idx) => (
             <div key={user.name} className="bg-[#0b0e14] border border-[#1e2a40] rounded-2xl p-6 relative overflow-hidden">
               <div className="absolute top-0 left-0 w-1 h-full bg-[#3b82f6]" />
               <div className="flex justify-between items-start mb-6">

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { CreditCard, Plus, ArrowDownRight, Calendar, User, Trash2, Edit2 } from 'lucide-react';
+import { CreditCard, Plus, ArrowDownRight, Calendar, User, Trash2, Edit2, Search } from 'lucide-react';
 import AddPaymentModal from '@/src/components/modals/AddPaymentModal';
 import ConfirmModal from '@/src/components/ui/ConfirmModal';
 import { useFirestore } from '@/src/hooks/useFirestore';
@@ -13,6 +13,13 @@ export default function Payments() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | undefined>(undefined);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const parseDateValue = (value?: string) => {
+    if (!value) return 0;
+    const time = new Date(value).getTime();
+    return Number.isFinite(time) ? time : 0;
+  };
 
   const handleDeletePayment = async () => {
     if (deletingId) {
@@ -30,6 +37,24 @@ export default function Payments() {
     setIsModalOpen(false);
     setEditingPayment(undefined);
   };
+
+  const term = searchTerm.trim().toLowerCase();
+  const filteredPayments = payments
+    .filter((payment) => {
+      if (!term) return true;
+      return [
+        payment.partyName,
+        payment.siteId,
+        payment.category,
+        payment.partner,
+        payment.notes,
+        payment.date,
+        String(payment.amount),
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(term));
+    })
+    .sort((a, b) => parseDateValue(b.date) - parseDateValue(a.date));
 
   if (loading) return <div className="p-8 text-center text-gray-500">Loading payments...</div>;
 
@@ -57,6 +82,18 @@ export default function Payments() {
         </div>
       ) : (
         <div className="bg-[#111520] border border-[#1e2a40] rounded-2xl overflow-hidden shadow-xl">
+          <div className="p-4 border-b border-[#1e2a40] bg-[#0b0e14]">
+            <div className="relative w-full sm:w-80">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <input
+                type="text"
+                placeholder="Search by party, site, category, amount..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-[#111520] border border-[#1e2a40] rounded-xl pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-[#00d4aa] transition"
+              />
+            </div>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="bg-[#0b0e14] text-gray-500 font-mono text-[10px] uppercase tracking-wider">
@@ -70,7 +107,14 @@ export default function Payments() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#1e2a40]">
-                {payments.map((payment, i) => (
+                {filteredPayments.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="p-8 text-center text-gray-500">
+                      No payments match your search.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredPayments.map((payment, i) => (
                   <motion.tr 
                     key={payment.id}
                     initial={{ opacity: 0, y: 10 }}
@@ -117,7 +161,8 @@ export default function Payments() {
                       </div>
                     </td>
                   </motion.tr>
-                ))}
+                  ))
+                )}
               </tbody>
             </table>
           </div>
