@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { Users, Plus, Phone, IndianRupee, Trash2, Edit2, Clock, Briefcase } from 'lucide-react';
+import { Users, Plus, Phone, IndianRupee, Trash2, Edit2, Clock, Briefcase, List, CheckCircle } from 'lucide-react';
 import { motion } from 'motion/react';
 import { formatCurrency } from '@/src/lib/utils';
 import AddWorkerModal from '@/src/components/modals/AddWorkerModal';
 import ConfirmModal from '@/src/components/ui/ConfirmModal';
+import PaymentHistoryModal from '@/src/components/modals/PaymentHistoryModal';
 import { useFirestore } from '@/src/hooks/useFirestore';
 import type { LabourWorker, Expense } from '@/src/types';
 
@@ -14,6 +15,7 @@ export default function Labour() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingWorker, setEditingWorker] = useState<LabourWorker | undefined>(undefined);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [historyWorker, setHistoryWorker] = useState<LabourWorker | null>(null);
 
   const handleDeleteWorker = async () => {
     if (deletingId) {
@@ -74,17 +76,37 @@ export default function Labour() {
     }
   };
 
-  const handlePayNow = async (worker: LabourWorker) => {
-    alert("Payments to Labour should now be logged in the Telegram Expense Bot to ensure perfect tracking without double entry.");
-  };
-
   const getDerivedBalance = (worker: LabourWorker) => {
     const historicalBalance = worker.balance || 0;
     const accrued = worker.totalAccrued || 0;
     const paidViaSync = expenses
       .filter(e => e.labourName && e.labourName.toLowerCase() === worker.name.toLowerCase())
       .reduce((sum, e) => sum + Number(e.amount || 0), 0);
-    return historicalBalance + accrued - paidViaSync;
+    const paidLocally = (worker.localPayments || []).reduce((sum, p) => sum + p.amount, 0);
+    return historicalBalance + accrued - paidViaSync - paidLocally;
+  };
+
+  const handlePayNow = async (worker: LabourWorker) => {
+    const balance = getDerivedBalance(worker);
+    if (balance <= 0) return;
+
+    const confirm = window.confirm(`Mark ${formatCurrency(balance)} as paid for ${worker.name}?`);
+    if (!confirm) return;
+
+    try {
+      const newPayment = {
+        date: new Date().toISOString(),
+        amount: balance,
+        note: 'Settled via Pay Now'
+      };
+
+      await update(worker.id!, {
+        localPayments: [...(worker.localPayments || []), newPayment],
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error('Error recording payment:', error);
+    }
   };
 
   if (loading) return <div className="p-8 text-center text-gray-500">Loading workers...</div>;
@@ -170,12 +192,22 @@ export default function Labour() {
                 </div>
               </div>
               
-              <div className="p-5 bg-[#0b0e14] flex-1 flex flex-col justify-between">
+              <div className="p-5 bg-[#0b0e14] flex-1 flex flex-col justify-between relative">
                 <div className="mb-4">
-                  <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1">Pending Balance</p>
-                  <p className={`text-2xl font-black ${getDerivedBalance(worker) > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                    {formatCurrency(getDerivedBalance(worker))}
-                  </p>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1">Pending Balance</p>
+                      <p className={`text-2xl font-black ${getDerivedBalance(worker) > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                        {formatCurrency(getDerivedBalance(worker))}
+                      </p>
+                    </div>
+                    {getDerivedBalance(worker) <= 0 && (
+                      <div className="flex items-center gap-1 bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded-lg text-xs font-bold border border-emerald-500/20">
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        PAID
+                      </div>
+                    )}
+                  </div>
                 </div>
                 
                 <div className="space-y-2">
@@ -204,12 +236,23 @@ export default function Labour() {
                     )}
                   </div>
                   
-                  <button 
-                    onClick={() => handlePayNow(worker)}
-                    className="w-full py-2 rounded-xl font-bold text-sm bg-[#1e2a40] text-gray-400 hover:text-white transition shadow-sm border border-[#2a3a5a]"
-                  >
-                    Set Balance to 0 (Paid)
-                  </button>
+                  <div className="flex gap-2">
+                    {getDerivedBalance(worker) > 0 && (
+                      <button
+                        onClick={() => handlePayNow(worker)}
+                        className="flex-1 py-2 rounded-xl font-bold text-sm bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition shadow-sm border border-emerald-500/20"
+                      >
+                        Set to 0 (Paid)
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setHistoryWorker(worker)}
+                      className={`${getDerivedBalance(worker) > 0 ? 'flex-1' : 'w-full'} py-2 rounded-xl font-bold text-sm bg-[#1e2a40] text-gray-400 hover:text-white transition shadow-sm border border-[#2a3a5a] flex items-center justify-center gap-2`}
+                    >
+                      <List className="w-4 h-4" />
+                      Payment History
+                    </button>
+                  </div>
                 </div>
               </div>
             </motion.div>
@@ -232,6 +275,14 @@ export default function Labour() {
         title="Delete Worker"
         message="Are you sure you want to delete this worker? This action cannot be undone."
       />
+
+      {historyWorker && (
+        <PaymentHistoryModal
+          isOpen={!!historyWorker}
+          onClose={() => setHistoryWorker(null)}
+          worker={historyWorker}
+        />
+      )}
     </div>
   );
 }
