@@ -18,8 +18,8 @@ export default function PartyDetailsModal({ isOpen, onClose, party, expenses, pa
   const partyPayments = payments.filter(p => p.partyName?.toLowerCase() === party.name.toLowerCase());
 
   const allTransactions = [
-    ...partyExpenses.map(e => ({ ...e, type: 'expense', date: e.date, amount: Number(e.amount || 0), description: e.description || e.category || 'Expense' })),
-    ...partyPayments.map(p => ({ ...p, type: 'payment', date: p.date, amount: Number(p.amount || 0), description: p.siteName || 'Payment' }))
+    ...partyExpenses.map(e => ({ ...e, type: 'expense', date: e.date, amount: Number(e.amount || 0), description: e.notes || e.category || 'Expense' })),
+    ...partyPayments.map(p => ({ ...p, type: 'payment', date: p.date, amount: Number(p.amount || 0), description: p.siteId || 'Payment' }))
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   const totalVolume = party.given + party.received;
