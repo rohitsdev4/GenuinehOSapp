@@ -64,7 +64,7 @@ export default function Astro() {
     try {
       const res = await callGemini({
         prompt: text,
-        model: 'gemini-2.0-flash',
+        model: 'nvidia/llama-3.1-nemotron-70b-instruct:free',
         systemInstruction: "You are an expert Astro Business Advisor for Rohit Kumar, a business owner in the medical infrastructure and gas pipeline industry. Provide guidance based on Vedic Astrology principles mixed with practical business wisdom. Use a mix of Hindi and English (Hinglish). Be encouraging, wise, and slightly mystical but grounded in business reality.",
         maxTokens: 500,
         history: messages.map(m => ({ role: m.role, text: m.text })),
