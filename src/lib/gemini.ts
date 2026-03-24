@@ -701,15 +701,25 @@ export async function testGeminiConnection(key: string): Promise<boolean> {
       baseURL: "https://openrouter.ai/api/v1",
       apiKey: key,
       dangerouslyAllowBrowser: true,
+      defaultHeaders: {
+        "HTTP-Referer": typeof window !== 'undefined' ? window.location.origin : "http://localhost:3000",
+        "X-Title": "GenuineOS",
+      }
     });
     await openai.chat.completions.create({
-      model: 'nvidia/llama-3.1-nemotron-70b-instruct:free',
+      model: 'google/gemini-2.0-flash-lite-preview-02-05:free', // Fast model for testing
       messages: [{ role: 'user', content: 'Hi' }],
       max_tokens: 5
     });
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error("OpenRouter Test Connection Error:", error);
+    // Explicitly reject if we hit an auth error so `Settings.tsx` can correctly show "Invalid API Key."
+    if (error.status === 401 || error.status === 402 ||
+       (error.message && error.message.includes('401')) ||
+       (error.message && error.message.toLowerCase().includes('invalid api key'))) {
+      throw new Error('INVALID_API_KEY');
+    }
     return false;
   }
 }
