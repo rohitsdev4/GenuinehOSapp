@@ -1,4 +1,4 @@
-import type { Payment, Site } from '@/src/types';
+import type { Payment, Expense, Site } from '@/src/types';
 
 export type SiteTemplate = {
   key: string;
@@ -79,10 +79,23 @@ export const getSiteReceivedAmount = (site: Partial<Site>, payments: Payment[]) 
   }, 0);
 };
 
-export const buildSiteFinancials = (site: Partial<Site>, payments: Payment[]) => {
-  const total = siteTotalValue(site);
+export const getSiteCost = (site: Partial<Site>, expenses: Expense[]) => {
+  const siteName = normalize(site.name);
+  return expenses.reduce((sum, expense) => {
+    const paymentSite = normalize(expense.siteId);
+    const notes = normalize(expense.notes);
+    if (siteName && (paymentSite.includes(siteName) || notes.includes(siteName))) {
+      return sum + toAmount(expense.amount);
+    }
+    return sum;
+  }, 0);
+};
+
+export const buildSiteFinancials = (site: Partial<Site>, payments: Payment[], expenses: Expense[] = []) => {
+  const total = site.budget || siteTotalValue(site);
   const received = getSiteReceivedAmount(site, payments);
+  const cost = getSiteCost(site, expenses);
   const pending = Math.max(total - received, 0);
-  return { total, received, pending };
+  return { total, received, cost, pending };
 };
 

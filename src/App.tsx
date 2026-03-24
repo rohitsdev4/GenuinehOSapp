@@ -11,7 +11,7 @@ import { Loader2 } from 'lucide-react';
 const Dashboard = React.lazy(() => import('@/src/pages/Dashboard'));
 const Payments = React.lazy(() => import('@/src/pages/Payments'));
 const Expenses = React.lazy(() => import('@/src/pages/Expenses'));
-const Receivables = React.lazy(() => import('@/src/pages/Receivables'));
+const Parties = React.lazy(() => import('@/src/pages/Parties'));
 const Sites = React.lazy(() => import('@/src/pages/Sites'));
 const Labour = React.lazy(() => import('@/src/pages/Labour'));
 const Clients = React.lazy(() => import('@/src/pages/Clients'));
@@ -60,7 +60,7 @@ function AppShell() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/payments" element={<Payments />} />
               <Route path="/expenses" element={<Expenses />} />
-              <Route path="/receivables" element={<Receivables />} />
+              <Route path="/parties" element={<Parties />} />
               <Route path="/sites" element={<Sites />} />
               <Route path="/labour" element={<Labour />} />
               <Route path="/clients" element={<Clients />} />

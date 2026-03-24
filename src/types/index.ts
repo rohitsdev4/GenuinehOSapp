@@ -20,8 +20,18 @@ export interface Expense {
   partyName?: string;
   partner?: string;
   siteId?: string;
+  labourName?: string;
   notes?: string;
   sourceRowKey?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Party {
+  id?: string;
+  name: string;
+  type?: string;
+  balance?: number;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -55,6 +65,7 @@ export interface Site {
   workType?: string;
   amountReceived?: number;
   amountPending?: number;
+  cost?: number;
   progress: number;
   notes?: string;
   createdAt?: string;
@@ -68,7 +79,8 @@ export interface LabourWorker {
   paymentType: 'Monthly' | 'Contract';
   dailyWage: number;
   monthlyWage?: number;
-  balance: number;
+  balance: number; // dynamically computed in UI, kept for legacy compatibility
+  totalAccrued?: number; // the sum of all 'Mark Present' and 'Add Month' actions
   status: 'Active' | 'Inactive';
   notes?: string;
   createdAt?: string;

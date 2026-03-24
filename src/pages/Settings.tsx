@@ -15,7 +15,7 @@ import {
   getLastSyncedRow, setLastSyncedRow, resetLastSyncedRow, buildSyncRange,
   type SheetType
 } from '@/src/lib/sync';
-import type { Expense, Payment, Site, LabourWorker } from '@/src/types';
+import type { Expense, Payment, Site, LabourWorker, Party } from '@/src/types';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -133,6 +133,8 @@ export default function Settings() {
   const [tabExpenses, setTabExpenses] = useState('');
   const [tabPayments, setTabPayments] = useState('');
   const [tabLabour, setTabLabour] = useState('');
+  const [tabSites, setTabSites] = useState('');
+  const [tabParties, setTabParties] = useState('');
 
   // Incremental sync info
   const [lastSyncedRow, setLastSyncedRowState] = useState(1);
@@ -141,22 +143,31 @@ export default function Settings() {
   const { data: existingExpenses, add: addExpense } = useFirestore<Expense>('expenses');
   const { data: existingPayments, add: addPayment } = useFirestore<Payment>('payments');
   const { data: existingLabour, add: addLabour } = useFirestore<LabourWorker>('labour');
-  const { data: sites } = useFirestore<Site>('sites');
+  const { data: sites, add: addSite } = useFirestore<Site>('sites');
+  const { data: existingParties, add: addParty } = useFirestore<Party>('parties');
 
   // Bug fix 2: keep always-current refs so useCallback never goes stale
   const existingExpensesRef = useRef(existingExpenses);
   const existingPaymentsRef = useRef(existingPayments);
   const existingLabourRef = useRef(existingLabour);
+  const existingSitesRef = useRef(sites);
+  const existingPartiesRef = useRef(existingParties);
   const addExpenseRef = useRef(addExpense);
   const addPaymentRef = useRef(addPayment);
   const addLabourRef = useRef(addLabour);
+  const addSiteRef = useRef(addSite);
+  const addPartyRef = useRef(addParty);
 
   useEffect(() => { existingExpensesRef.current = existingExpenses; }, [existingExpenses]);
   useEffect(() => { existingPaymentsRef.current = existingPayments; }, [existingPayments]);
   useEffect(() => { existingLabourRef.current = existingLabour; }, [existingLabour]);
+  useEffect(() => { existingSitesRef.current = sites; }, [sites]);
+  useEffect(() => { existingPartiesRef.current = existingParties; }, [existingParties]);
   useEffect(() => { addExpenseRef.current = addExpense; }, [addExpense]);
   useEffect(() => { addPaymentRef.current = addPayment; }, [addPayment]);
   useEffect(() => { addLabourRef.current = addLabour; }, [addLabour]);
+  useEffect(() => { addSiteRef.current = addSite; }, [addSite]);
+  useEffect(() => { addPartyRef.current = addParty; }, [addParty]);
 
   // ── Load localStorage ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -186,9 +197,11 @@ export default function Settings() {
     } catch (_) {}
     // multi-sheet tabs
     setTabMain(getSheetTab('main'));
-    setTabExpenses(localStorage.getItem('sheet_tab_expenses') || '');
-    setTabPayments(localStorage.getItem('sheet_tab_payments') || '');
-    setTabLabour(localStorage.getItem('sheet_tab_labour') || '');
+    setTabExpenses(getSheetTab('expenses'));
+    setTabPayments(getSheetTab('payments'));
+    setTabLabour(getSheetTab('labour'));
+    setTabSites(getSheetTab('sites'));
+    setTabParties(getSheetTab('parties'));
     // incremental
     setLastSyncedRowState(getLastSyncedRow());
   }, []);
@@ -199,6 +212,8 @@ export default function Settings() {
     saveSheetTab('expenses', tabExpenses);
     saveSheetTab('payments', tabPayments);
     saveSheetTab('labour', tabLabour);
+    saveSheetTab('sites', tabSites);
+    saveSheetTab('parties', tabParties);
     alert('Sheet tab names saved!');
   };
 
@@ -217,9 +232,11 @@ export default function Settings() {
     try {
       // -- Determine which tabs to sync --
       const mainTab = getSheetTab('main');
-      const expTab = localStorage.getItem('sheet_tab_expenses');
-      const payTab = localStorage.getItem('sheet_tab_payments');
-      const labTab = localStorage.getItem('sheet_tab_labour');
+      const expTab = getSheetTab('expenses');
+      const payTab = getSheetTab('payments');
+      const labTab = getSheetTab('labour');
+      const sitTab = getSheetTab('sites');
+      const parTab = getSheetTab('parties');
 
       // Start row for incremental (Labour usually isn't incremental as it's a fixed list, 
       // but we use the same row pointer for simplicity if shared)
@@ -233,41 +250,89 @@ export default function Settings() {
 
       // Tagged rows: typed wrapper instead of polluting the raw string[] array
       let taggedRows: TaggedRow[] = [];
+      
+      const { range: lRange } = buildSyncRange(labTab || 'Labour', 1);
+      const { range: sRange } = buildSyncRange(sitTab || 'Sites', 1);
+      const { range: ptRange } = buildSyncRange(parTab || 'Parties', 1);
 
-      if (expTab || payTab || labTab) {
+      if (expTab || payTab) {
         // Dedicated sheet tabs per type — fetch in parallel
         const { range: eRange } = buildSyncRange(expTab || '', lastRow);
         const { range: pRange } = buildSyncRange(payTab || '', lastRow);
-        const { range: lRange } = buildSyncRange(labTab || '', 1); // Labour always full fetch for list management
         
-        const [eFetch, pFetch, lFetch] = await Promise.all([
+        const [eFetch, pFetch, lFetch, sFetch, ptFetch] = await Promise.all([
           expTab ? fetchFromSheet(eRange) : Promise.resolve([]),
           payTab ? fetchFromSheet(pRange) : Promise.resolve([]),
           labTab ? fetchFromSheet(lRange) : Promise.resolve([]),
+          sitTab ? fetchFromSheet(sRange) : Promise.resolve([]),
+          parTab ? fetchFromSheet(ptRange) : Promise.resolve([]),
         ]);
         
         const eParsed = normalizeImportedRows(eFetch || []);
         const pParsed = normalizeImportedRows(pFetch || []);
-        const lParsed = normalizeImportedRows(lFetch || []);
         
         taggedRows = [
           ...eParsed.map(row => ({ row, forceType: 'expense' as const })),
           ...pParsed.map(row => ({ row, forceType: 'payment' as const })),
-          ...lParsed.map(row => ({ row, forceType: 'labour' as const })),
         ];
         newLastRow = Math.max(lastRow, lastRow + (eFetch?.length || 0), lastRow + (pFetch?.length || 0));
+        await processReferenceTabs(lFetch, sFetch, ptFetch);
       } else {
-        // Single main sheet
-        if (isIncremental) {
+        // Single main sheet + sync reference tables
+        const [mainFetch, lFetch, sFetch, ptFetch] = await Promise.all([
+           fetchFromSheet(buildSyncRange(mainTab, lastRow).range),
+           labTab ? fetchFromSheet(lRange) : Promise.resolve([]),
+           sitTab ? fetchFromSheet(sRange) : Promise.resolve([]),
+           parTab ? fetchFromSheet(ptRange) : Promise.resolve([])
+        ]);
+        
+        if (isIncremental && mainFetch && mainFetch.length > 0) {
           const headerFetch = await fetchFromSheet(`${mainTab}!A1:J1`);
           headerRowData = headerFetch?.[0] || undefined;
         }
-        const { range } = buildSyncRange(mainTab, lastRow);
-        const fetched = await fetchFromSheet(range);
-        rows = fetched || [];
+        
+        rows = mainFetch || [];
         newLastRow = lastRow + rows.length;
         const importedRows = normalizeImportedRows(rows, headerRowData);
         taggedRows = importedRows.map(row => ({ row }));
+        
+        await processReferenceTabs(lFetch, sFetch, ptFetch);
+      }
+      
+      async function processReferenceTabs(lDat: any, sDat: any, pDat: any) {
+        // Extract array of strings from column A, skipping header rows if named
+        const extract = (data: any, headerMatcher: string) => {
+          if (!data || !Array.isArray(data)) return [];
+          return data.map((r: any) => String(r[0] || '')).filter(v => v.trim() && !v.toLowerCase().includes(headerMatcher));
+        };
+        
+        const lNames = extract(lDat, 'labour');
+        const sNames = extract(sDat, 'site');
+        const pNames = extract(pDat, 'party');
+        
+        const existingWorkers = new Set(existingLabourRef.current.map(w => normalizeKey(w.name)));
+        for (const name of lNames) {
+           const k = normalizeKey(name);
+           if (!existingWorkers.has(k)) {
+             try { await addLabourRef.current({ name, paymentType: 'Contract', dailyWage: 0, balance: 0, status: 'Active', createdAt: serverTimestamp(), updatedAt: serverTimestamp() }); existingWorkers.add(k); } catch (_) {}
+           }
+        }
+        
+        const existingSitesCache = new Set(existingSitesRef.current.map(s => normalizeKey(s.name)));
+        for (const name of sNames) {
+           const k = normalizeKey(name);
+           if (!existingSitesCache.has(k)) {
+             try { await addSiteRef.current({ name, location: '', status: 'Active', progress: 0, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }); existingSitesCache.add(k); } catch (_) {}
+           }
+        }
+        
+        const existingPartiesCache = new Set(existingPartiesRef.current.map(p => normalizeKey(p.name)));
+        for (const name of pNames) {
+           const k = normalizeKey(name);
+           if (!existingPartiesCache.has(k)) {
+              try { await addPartyRef.current({ name, type: 'Vendor', balance: 0, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }); existingPartiesCache.add(k); } catch (_) {}
+           }
+        }
       }
 
       if (!taggedRows.length) {
@@ -287,33 +352,8 @@ export default function Settings() {
         existingKeys.add(createSourceRowKey(fallback));
       });
       
-      const existingWorkers = new Set(existingLabourRef.current.map(w => normalizeKey(w.name)));
 
       for (const { row, forceType } of taggedRows) {
-        // Labour specific logic
-        if (forceType === 'labour' || row.type.toLowerCase() === 'labour') {
-          if (!row.labour) { skippedCount++; continue; }
-          const nameKey = normalizeKey(row.labour);
-          if (existingWorkers.has(nameKey)) { skippedCount++; continue; }
-          
-          try {
-            await addLabourRef.current({
-              name: row.labour,
-              phone: row.phone || '',
-              status: 'Active',
-              paymentType: row.paymentType || 'Contract',
-              dailyWage: row.paymentType === 'Monthly' ? 0 : (row.wage || 0),
-              monthlyWage: row.paymentType === 'Monthly' ? (row.wage || 0) : 0,
-              balance: 0,
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp()
-            });
-            existingWorkers.add(nameKey);
-            successCount++;
-          } catch { errorCount++; }
-          continue;
-        }
-
         // Apply site alias
         if (row.site) { const k = normalizeKey(row.site); if (aliasMap[k]) row.site = aliasMap[k]; }
 
@@ -327,7 +367,7 @@ export default function Settings() {
         const sourceRowKey = createSourceRowKey(row);
         if (existingKeys.has(sourceRowKey)) { skippedCount++; continue; }
 
-        const entry = { date: row.date, amount: row.amount, category: row.category || 'Other', notes: row.description || row.labour || '', partyName: row.party || '', siteId: row.site || '', partner: row.user || '', sourceRowKey };
+        const entry = { date: row.date, amount: row.amount, category: row.category || 'Other', notes: row.description || '', labourName: row.labour || '', partyName: row.party || '', siteId: row.site || '', partner: row.user || '', sourceRowKey };
 
         const isExpense = forceType === 'expense' || normalizedType === 'expense';
         const isPayment = forceType === 'payment' || ['payment received', 'payment', 'income'].includes(normalizedType);

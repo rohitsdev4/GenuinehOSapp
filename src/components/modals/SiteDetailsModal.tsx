@@ -99,14 +99,18 @@ export default function SiteDetailsModal({ isOpen, onClose, site, onDelete }: Si
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div className="bg-[#0b0e14] p-4 rounded-xl border border-[#1e2a40]">
                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Client</p>
-                <p className="text-sm font-bold text-white">{site.clientName || site.clientId || '-'}</p>
+                <p className="text-sm font-bold text-white max-w-full truncate">{site.clientName || site.clientId || '-'}</p>
               </div>
               <div className="bg-[#0b0e14] p-4 rounded-xl border border-[#1e2a40]">
                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Received</p>
                 <p className="text-sm font-bold text-emerald-400">₹{(site.amountReceived || 0).toLocaleString('en-IN')}</p>
+              </div>
+              <div className="bg-[#0b0e14] p-4 rounded-xl border border-[#1e2a40]">
+                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Cost</p>
+                <p className="text-sm font-bold text-rose-400">₹{(site.cost || 0).toLocaleString('en-IN')}</p>
               </div>
               <div className="bg-[#0b0e14] p-4 rounded-xl border border-[#1e2a40]">
                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Pending</p>

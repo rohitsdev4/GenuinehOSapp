@@ -58,16 +58,18 @@ export const fetchFromSheet = async (range = 'Main!A1:J1000') => {
  * Returns the configured sheet tab name for a given type,
  * falling back to 'Main' if none set.
  */
-export type SheetType = 'expenses' | 'payments' | 'labour' | 'main';
+export type SheetType = 'expenses' | 'payments' | 'labour' | 'main' | 'sites' | 'parties';
 
 export const getSheetTab = (type: SheetType): string => {
   const map: Record<SheetType, string> = {
     main: localStorage.getItem('sheet_tab_main') || 'Main',
     expenses: localStorage.getItem('sheet_tab_expenses') || '',
     payments: localStorage.getItem('sheet_tab_payments') || '',
-    labour: localStorage.getItem('sheet_tab_labour') || '',
+    labour: localStorage.getItem('sheet_tab_labour') || 'Labour',
+    sites: localStorage.getItem('sheet_tab_sites') || 'Sites',
+    parties: localStorage.getItem('sheet_tab_parties') || 'Parties',
   };
-  return map[type] || map.main;
+  return map[type] || '';
 };
 
 export const saveSheetTab = (type: SheetType, tabName: string) => {

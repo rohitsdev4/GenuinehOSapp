@@ -6,10 +6,11 @@ import { formatCurrency } from '@/src/lib/utils';
 import AddWorkerModal from '@/src/components/modals/AddWorkerModal';
 import ConfirmModal from '@/src/components/ui/ConfirmModal';
 import { useFirestore } from '@/src/hooks/useFirestore';
-import type { LabourWorker } from '@/src/types';
+import type { LabourWorker, Expense } from '@/src/types';
 
 export default function Labour() {
   const { data: workers, loading, update, remove: removeWorker } = useFirestore<LabourWorker>('labour');
+  const { data: expenses } = useFirestore<Expense>('expenses');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingWorker, setEditingWorker] = useState<LabourWorker | undefined>(undefined);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -38,7 +39,7 @@ export default function Labour() {
         : worker.dailyWage;
         
       await update(worker.id!, {
-        balance: (worker.balance || 0) + increment,
+        totalAccrued: (worker.totalAccrued || 0) + increment,
         updatedAt: new Date().toISOString(),
       });
     } catch (error) {
@@ -50,7 +51,7 @@ export default function Labour() {
     if (worker.paymentType !== 'Monthly' || !worker.monthlyWage) return;
     try {
       await update(worker.id!, {
-        balance: (worker.balance || 0) + worker.monthlyWage,
+        totalAccrued: (worker.totalAccrued || 0) + worker.monthlyWage,
         updatedAt: new Date().toISOString(),
       });
     } catch (error) {
@@ -65,7 +66,7 @@ export default function Labour() {
     
     try {
       await update(worker.id!, {
-        balance: (worker.balance || 0) + amount,
+        totalAccrued: (worker.totalAccrued || 0) + amount,
         updatedAt: new Date().toISOString(),
       });
     } catch (error) {
@@ -74,14 +75,16 @@ export default function Labour() {
   };
 
   const handlePayNow = async (worker: LabourWorker) => {
-    try {
-      await update(worker.id!, {
-        balance: 0,
-        updatedAt: new Date().toISOString(),
-      });
-    } catch (error) {
-      console.error('Error paying worker:', error);
-    }
+    alert("Payments to Labour should now be logged in the Telegram Expense Bot to ensure perfect tracking without double entry.");
+  };
+
+  const getDerivedBalance = (worker: LabourWorker) => {
+    const historicalBalance = worker.balance || 0;
+    const accrued = worker.totalAccrued || 0;
+    const paidViaSync = expenses
+      .filter(e => e.labourName && e.labourName.toLowerCase() === worker.name.toLowerCase())
+      .reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    return historicalBalance + accrued - paidViaSync;
   };
 
   if (loading) return <div className="p-8 text-center text-gray-500">Loading workers...</div>;
@@ -170,8 +173,8 @@ export default function Labour() {
               <div className="p-5 bg-[#0b0e14] flex-1 flex flex-col justify-between">
                 <div className="mb-4">
                   <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1">Pending Balance</p>
-                  <p className={`text-2xl font-black ${worker.balance > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                    {formatCurrency(worker.balance)}
+                  <p className={`text-2xl font-black ${getDerivedBalance(worker) > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                    {formatCurrency(getDerivedBalance(worker))}
                   </p>
                 </div>
                 
@@ -203,12 +206,7 @@ export default function Labour() {
                   
                   <button 
                     onClick={() => handlePayNow(worker)}
-                    disabled={worker.balance <= 0}
-                    className={`w-full py-2 rounded-xl font-bold text-sm transition ${
-                      worker.balance > 0 
-                        ? 'bg-[#00d4aa] text-[#07090f] hover:bg-[#00b894] shadow-[0_0_10px_rgba(0,212,170,0.2)]' 
-                        : 'bg-[#1e2a40] text-gray-500 cursor-not-allowed'
-                    }`}
+                    className="w-full py-2 rounded-xl font-bold text-sm bg-[#1e2a40] text-gray-400 hover:text-white transition shadow-sm border border-[#2a3a5a]"
                   >
                     Set Balance to 0 (Paid)
                   </button>

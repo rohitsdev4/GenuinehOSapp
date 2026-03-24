@@ -37,14 +37,21 @@ export default function Dashboard() {
   const expense = thisMonth(expenses);
   const net = income - expense;
   
-  const criticalReceivables = receivables.filter(r => {
-    const days = Math.floor((Date.now() - new Date(r.dueDate).getTime()) / 86400000);
-    return days > 60 && r.status !== 'Collected';
-  }).length;
+  const partiesData = Array.from(
+    new Set([
+      ...payments.map((p) => (p.partyName || '').trim()),
+      ...expenses.map((e) => (e.partyName || '').trim()),
+    ].filter(Boolean))
+  );
 
-  const totalReceivable = receivables
-    .filter(r => r.status !== 'Collected')
-    .reduce((s, r) => s + (r.amount - r.amountCollected), 0);
+  const partyLedgers = partiesData.map(name => {
+    const given = expenses.filter(e => e.partyName?.toLowerCase() === name.toLowerCase()).reduce((s, e) => s + toAmount(e.amount), 0);
+    const received = payments.filter(p => p.partyName?.toLowerCase() === name.toLowerCase()).reduce((s, p) => s + toAmount(p.amount), 0);
+    return { name, net: received - given };
+  });
+
+  const totalReceivable = partyLedgers.filter(p => p.net < 0).reduce((s, p) => s + Math.abs(p.net), 0);
+  const criticalReceivables = partyLedgers.filter(p => p.net < 0 && Math.abs(p.net) > 50000).length;
 
   const activeSites = sites.filter(s => s.status === 'Active').length;
   const pendingTasks = tasks.filter(t => t.status !== 'Completed').length;
@@ -52,10 +59,20 @@ export default function Dashboard() {
   const pipelineValue = deals.filter(d => d.stage !== 'Won' && d.stage !== 'Lost').reduce((s, d) => s + d.amount, 0);
 
   // Labour payroll summary
+  const getDerivedBalance = (worker: LabourWorker) => {
+    const historicalBalance = worker.balance || 0;
+    const accrued = worker.totalAccrued || 0;
+    const paidViaSync = expenses
+      .filter(e => e.labourName && e.labourName.toLowerCase() === worker.name.toLowerCase())
+      .reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    return historicalBalance + accrued - paidViaSync;
+  };
+
   const activeWorkers = workers.filter(w => w.status === 'Active');
-  const totalWagesOwed = workers.reduce((s, w) => s + (w.balance > 0 ? w.balance : 0), 0);
-  const workersPendingPay = workers.filter(w => w.balance > 0).length;
-  const topDebtor = workers.filter(w => w.balance > 0).sort((a, b) => b.balance - a.balance)[0];
+  const workersWithBalances = workers.map(w => ({ ...w, currentBalance: getDerivedBalance(w) })).filter(w => w.currentBalance > 0);
+  const totalWagesOwed = workersWithBalances.reduce((s, w) => s + w.currentBalance, 0);
+  const workersPendingPay = workersWithBalances.length;
+  const topDebtor = [...workersWithBalances].sort((a, b) => b.currentBalance - a.currentBalance)[0];
 
   const allTimeIncome = payments.reduce((sum, p) => sum + toAmount(p.amount), 0);
   const allTimeExpense = expenses.reduce((sum, e) => sum + toAmount(e.amount), 0);
@@ -146,7 +163,7 @@ export default function Dashboard() {
           <h3 className="text-xl sm:text-2xl font-black text-[#00d4aa]">{formatCurrency(totalReceivable)}</h3>
           <p className="text-[10px] sm:text-xs text-gray-500 font-bold tracking-widest mt-1 mb-3 uppercase">Total Receivables</p>
           <span className={cn("text-[10px] px-2.5 py-1 rounded-full font-bold", criticalReceivables > 0 ? "bg-rose-500/10 text-rose-400" : "bg-emerald-500/10 text-emerald-400")}>
-            {criticalReceivables} Critical
+            {criticalReceivables} {criticalReceivables === 1 ? 'Party' : 'Parties'} &gt; 50k
           </span>
         </motion.div>
 

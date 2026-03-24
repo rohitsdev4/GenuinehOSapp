@@ -11,12 +11,12 @@ async function startServer() {
   // API Route to fetch data from Google Sheets (read-only)
   app.get('/api/fetch-sheets', async (req, res) => {
     const { sheetId, apiKey, range } = req.query;
-    
+
     try {
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range || 'Main!A2:J1000'}?key=${apiKey}`;
       const response = await fetch(url);
       const result = await response.json();
-      
+
       if (!response.ok) throw new Error(result.error?.message || 'Sheets API error');
 
       res.json({ success: true, data: result.values || [] });
