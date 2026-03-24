@@ -1,0 +1,171 @@
+import React, { useState, useEffect } from 'react';
+import { X, Tag, User, IndianRupee, FileText } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { useFirestore } from '@/src/hooks/useFirestore';
+import type { Deal } from '@/src/types';
+
+interface AddDealModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  deal?: Deal; // if provided, edit mode
+}
+
+export default function AddDealModal({ isOpen, onClose, deal }: AddDealModalProps) {
+  const { add, update } = useFirestore<Deal>('deals');
+  const [title, setTitle] = useState('');
+  const [clientName, setClientName] = useState('');
+  const [amount, setAmount] = useState('');
+  const [stage, setStage] = useState<Deal['stage']>('Lead');
+  const [notes, setNotes] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const isEdit = !!deal;
+
+  useEffect(() => {
+    if (deal) {
+      setTitle(deal.title || '');
+      setClientName(deal.clientName || '');
+      setAmount(String(deal.amount || ''));
+      setStage(deal.stage || 'Lead');
+      setNotes(deal.notes || '');
+    } else {
+      setTitle(''); setClientName(''); setAmount(''); setStage('Lead'); setNotes('');
+    }
+  }, [deal]);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title || !clientName || !amount) return;
+    setLoading(true);
+    try {
+      if (isEdit && deal?.id) {
+        await update(deal.id, { title, clientName, amount: Number(amount), stage, notes });
+      } else {
+        await add({ title, clientName, amount: Number(amount), stage, notes });
+      }
+      onClose();
+    } catch (error) {
+      console.error('Error saving deal:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <AnimatePresence>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-0">
+        <motion.div 
+          initial={{ opacity: 0 }} 
+          animate={{ opacity: 1 }} 
+          exit={{ opacity: 0 }}
+          className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+          onClick={onClose}
+        />
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95, y: 20 }} 
+          animate={{ opacity: 1, scale: 1, y: 0 }} 
+          exit={{ opacity: 0, scale: 0.95, y: 20 }}
+          className="relative w-full max-w-lg bg-[#111520] border border-[#1e2a40] rounded-2xl shadow-2xl overflow-hidden"
+        >
+          <div className="flex items-center justify-between p-5 border-b border-[#1e2a40] bg-[#0b0e14]">
+            <h2 className="text-lg font-bold text-white font-['Syne']">{isEdit ? 'Edit Deal' : 'Add New Deal'}</h2>
+            <button onClick={onClose} className="p-2 text-gray-400 hover:text-white bg-[#161c2a] rounded-lg transition">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit}>
+            <div className="p-6 space-y-5">
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Deal Title</label>
+                <div className="relative">
+                  <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                  <input 
+                    type="text" 
+                    required
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="E.g., Hospital Bed Supply"
+                    className="w-full bg-[#07090f] border border-[#1e2a40] rounded-xl pl-10 pr-4 py-3 text-white outline-none focus:border-[#00d4aa] transition"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Client Name</label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                  <input 
+                    type="text" 
+                    required
+                    value={clientName}
+                    onChange={(e) => setClientName(e.target.value)}
+                    placeholder="E.g., Apollo Hospital"
+                    className="w-full bg-[#07090f] border border-[#1e2a40] rounded-xl pl-10 pr-4 py-3 text-white outline-none focus:border-[#00d4aa] transition"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Amount (₹)</label>
+                  <div className="relative">
+                    <IndianRupee className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#00d4aa]" />
+                    <input 
+                      type="number" 
+                      required
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      placeholder="500000"
+                      className="w-full bg-[#07090f] border border-[#1e2a40] rounded-xl pl-10 pr-4 py-3 text-white outline-none focus:border-[#00d4aa] transition font-mono" 
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Stage</label>
+                  <div className="relative">
+                    <select 
+                      value={stage}
+                      onChange={(e) => setStage(e.target.value as any)}
+                      className="w-full bg-[#07090f] border border-[#1e2a40] rounded-xl px-4 py-3 text-white outline-none focus:border-[#00d4aa] transition appearance-none"
+                    >
+                      <option value="Lead">Lead</option>
+                      <option value="Negotiation">Negotiation</option>
+                      <option value="Won">Won</option>
+                      <option value="Lost">Lost</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Notes</label>
+                <div className="relative">
+                  <FileText className="absolute left-3 top-3 w-4 h-4 text-gray-500" />
+                  <textarea 
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Deal specifics..."
+                    rows={3}
+                    className="w-full bg-[#07090f] border border-[#1e2a40] rounded-xl pl-10 pr-4 py-3 text-white outline-none focus:border-[#00d4aa] transition resize-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-[#1e2a40] bg-[#0b0e14] flex justify-end gap-3">
+              <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-xl font-bold text-gray-400 hover:text-white hover:bg-[#161c2a] transition">
+                Cancel
+              </button>
+              <button type="submit" disabled={loading} className="bg-[#00d4aa] text-[#07090f] px-6 py-2.5 rounded-xl font-bold hover:bg-[#00b894] transition shadow-[0_0_15px_rgba(0,212,170,0.3)] disabled:opacity-50">
+                {loading ? 'Saving...' : isEdit ? 'Update Deal' : 'Save Deal'}
+              </button>
+            </div>
+          </form>
+        </motion.div>
+      </div>
+    </AnimatePresence>
+  );
+}

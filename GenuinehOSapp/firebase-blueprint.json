@@ -1,0 +1,151 @@
+{
+  "entities": {
+    "Payment": {
+      "title": "Payment",
+      "description": "A payment record.",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string" },
+        "amount": { "type": "number" },
+        "partyName": { "type": "string" }
+      },
+      "required": ["date", "amount", "partyName"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "An expense record.",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string" },
+        "amount": { "type": "number" },
+        "category": { "type": "string" }
+      },
+      "required": ["date", "amount", "category"]
+    },
+    "Receivable": {
+      "title": "Receivable",
+      "description": "A receivable record.",
+      "type": "object",
+      "properties": {
+        "partyName": { "type": "string" },
+        "amount": { "type": "number" },
+        "dueDate": { "type": "string" },
+        "amountCollected": { "type": "number" },
+        "status": { "type": "string", "enum": ["Pending", "Partial", "Collected"] }
+      },
+      "required": ["partyName", "amount", "dueDate", "amountCollected", "status"]
+    },
+    "Site": {
+      "title": "Site",
+      "description": "A construction site.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "location": { "type": "string" },
+        "status": { "type": "string", "enum": ["Active", "Completed", "On Hold"] },
+        "progress": { "type": "number" }
+      },
+      "required": ["name", "location", "status", "progress"]
+    },
+    "LabourWorker": {
+      "title": "LabourWorker",
+      "description": "A labour worker.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "dailyWage": { "type": "number" },
+        "balance": { "type": "number" },
+        "status": { "type": "string", "enum": ["Active", "Inactive"] }
+      },
+      "required": ["name", "dailyWage", "balance", "status"]
+    },
+    "Client": {
+      "title": "Client",
+      "description": "A client.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "Deal": {
+      "title": "Deal",
+      "description": "A business deal.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "clientName": { "type": "string" },
+        "amount": { "type": "number" },
+        "stage": { "type": "string", "enum": ["Lead", "Negotiation", "Won", "Lost"] }
+      },
+      "required": ["title", "clientName", "amount", "stage"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "A task.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending", "In Progress", "Completed"] },
+        "priority": { "type": "string", "enum": ["Low", "Medium", "High"] }
+      },
+      "required": ["title", "status", "priority"]
+    },
+    "Habit": {
+      "title": "Habit",
+      "description": "A habit.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "frequency": { "type": "string" },
+        "streak": { "type": "number" }
+      },
+      "required": ["title", "frequency", "streak"]
+    },
+    "DiaryEntry": {
+      "title": "DiaryEntry",
+      "description": "A diary entry.",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string" },
+        "content": { "type": "string" }
+      },
+      "required": ["date", "content"]
+    },
+    "Goal": {
+      "title": "Goal",
+      "description": "A goal.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "progress": { "type": "number" },
+        "status": { "type": "string", "enum": ["Active", "Achieved", "Abandoned"] }
+      },
+      "required": ["title", "progress", "status"]
+    },
+    "Contact": {
+      "title": "Contact",
+      "description": "A contact.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "phone": { "type": "string" }
+      },
+      "required": ["name", "phone"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/payments": { "schema": { "$ref": "Payment" }, "description": "User payments" },
+    "/users/{userId}/expenses": { "schema": { "$ref": "Expense" }, "description": "User expenses" },
+    "/users/{userId}/receivables": { "schema": { "$ref": "Receivable" }, "description": "User receivables" },
+    "/users/{userId}/sites": { "schema": { "$ref": "Site" }, "description": "User sites" },
+    "/users/{userId}/workers": { "schema": { "$ref": "LabourWorker" }, "description": "User workers" },
+    "/users/{userId}/clients": { "schema": { "$ref": "Client" }, "description": "User clients" },
+    "/users/{userId}/deals": { "schema": { "$ref": "Deal" }, "description": "User deals" },
+    "/users/{userId}/tasks": { "schema": { "$ref": "Task" }, "description": "User tasks" },
+    "/users/{userId}/habits": { "schema": { "$ref": "Habit" }, "description": "User habits" },
+    "/users/{userId}/diary": { "schema": { "$ref": "DiaryEntry" }, "description": "User diary entries" },
+    "/users/{userId}/goals": { "schema": { "$ref": "Goal" }, "description": "User goals" },
+    "/users/{userId}/contacts": { "schema": { "$ref": "Contact" }, "description": "User contacts" }
+  }
+}

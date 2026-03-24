@@ -1,0 +1,9 @@
+{
+  "name": "GenuineOS v3.0",
+  "description": "A comprehensive business command center for Genuine Hospi Enterprises, featuring real-time tracking, AI-powered insights, and offline support.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
