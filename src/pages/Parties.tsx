@@ -5,8 +5,12 @@ import { motion } from 'motion/react';
 import { formatCurrency } from '@/src/lib/utils';
 import { useFirestore } from '@/src/hooks/useFirestore';
 import type { Party, Expense, Payment } from '@/src/types';
+import PartyDetailsModal from '@/src/components/modals/PartyDetailsModal';
 
 export default function Parties() {
+  const [selectedParty, setSelectedParty] = useState<(Party & { given: number; received: number; net: number }) | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
   const { data: parties, loading: partiesLoading } = useFirestore<Party>('parties');
   const { data: expenses, loading: expensesLoading } = useFirestore<Expense>('expenses');
   const { data: payments, loading: paymentsLoading } = useFirestore<Payment>('payments');
@@ -29,6 +33,11 @@ export default function Parties() {
     .map(p => ({ ...p, ...getPartyLedger(p.name) }))
     .sort((a, b) => Math.abs(b.net) - Math.abs(a.net)); // Highest balances first
 
+  const handlePartyClick = (party: Party & { given: number; received: number; net: number }) => {
+    setSelectedParty(party);
+    setIsModalOpen(true);
+  };
+
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-10">
       <PageHeader 
@@ -50,7 +59,8 @@ export default function Parties() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: i * 0.1 }}
-              className={`bg-[#111520] border rounded-2xl overflow-hidden flex flex-col ${party.net > 0 ? 'border-emerald-500/30' : party.net < 0 ? 'border-rose-500/30' : 'border-[#1e2a40]'}`}
+              onClick={() => handlePartyClick(party)}
+              className={`bg-[#111520] border rounded-2xl overflow-hidden flex flex-col cursor-pointer hover:border-white/20 transition-colors ${party.net > 0 ? 'border-emerald-500/30' : party.net < 0 ? 'border-rose-500/30' : 'border-[#1e2a40]'}`}
             >
               <div className="p-5 border-b border-[#1e2a40]">
                 <div className="flex justify-between items-start mb-4">
@@ -94,6 +104,19 @@ export default function Parties() {
           ))
         )}
       </div>
+
+      {selectedParty && (
+        <PartyDetailsModal
+          isOpen={isModalOpen}
+          onClose={() => {
+            setIsModalOpen(false);
+            setSelectedParty(null);
+          }}
+          party={selectedParty}
+          expenses={expenses}
+          payments={payments}
+        />
+      )}
     </div>
   );
 }
