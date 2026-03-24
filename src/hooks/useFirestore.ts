@@ -3,7 +3,7 @@ import {
   collection, doc,
   addDoc, updateDoc, deleteDoc,
   onSnapshot, query, orderBy,
-  serverTimestamp, Timestamp
+  serverTimestamp, Timestamp, writeBatch
 } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 
@@ -92,5 +92,37 @@ export function useFirestore<T extends { id?: string }>(
     }
   };
 
-  return { data, loading, error, add, update, remove };
+  const clearAll = async () => {
+    if (!userId) throw new Error('Not logged in');
+    try {
+      // Use batched writes to delete documents efficiently (up to 500 per batch)
+      const batches = [];
+      let currentBatch = writeBatch(db);
+      let opCount = 0;
+
+      for (const item of data) {
+        if (item.id) {
+          const docRef = doc(db, 'users', userId, collectionName, item.id);
+          currentBatch.delete(docRef);
+          opCount++;
+
+          if (opCount === 500) {
+            batches.push(currentBatch.commit());
+            currentBatch = writeBatch(db);
+            opCount = 0;
+          }
+        }
+      }
+
+      if (opCount > 0) {
+        batches.push(currentBatch.commit());
+      }
+
+      await Promise.all(batches);
+    } catch (err: any) {
+      handleFirestoreError(err, OperationType.DELETE, `users/${userId}/${collectionName}`);
+    }
+  };
+
+  return { data, loading, error, add, update, remove, clearAll };
 }
