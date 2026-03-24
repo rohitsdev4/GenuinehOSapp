@@ -7,6 +7,7 @@ export interface Payment {
   siteId?: string;
   category?: string;
   notes?: string;
+  sourceRowKey?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -20,6 +21,7 @@ export interface Expense {
   partner?: string;
   siteId?: string;
   notes?: string;
+  sourceRowKey?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -41,11 +43,18 @@ export interface Site {
   name: string;
   location: string;
   clientId?: string;
+  clientName?: string;
   status: 'Active' | 'Completed' | 'On Hold';
   startDate?: string;
   endDate?: string;
   estimatedEndDate?: string;
   budget?: number;
+  projectCount?: number;
+  baseProjectCost?: number;
+  extraWorkCost?: number;
+  workType?: string;
+  amountReceived?: number;
+  amountPending?: number;
   progress: number;
   notes?: string;
   createdAt?: string;

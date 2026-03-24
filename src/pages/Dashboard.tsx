@@ -1,8 +1,8 @@
 import { useFirestore } from '@/src/hooks/useFirestore';
-import type { Payment, Expense, Receivable, Site, Task, Deal, Habit } from '@/src/types';
+import type { Payment, Expense, Receivable, Site, Task, Deal, Habit, LabourWorker } from '@/src/types';
 import { motion } from 'motion/react';
 import { cn, formatCurrency } from '@/src/lib/utils';
-import { CheckSquare, BarChart3, PieChart as PieChartIcon, Sparkles, Activity, Users } from 'lucide-react';
+import { CheckSquare, BarChart3, PieChart as PieChartIcon, Sparkles, Activity, Users, HardHat, IndianRupee, AlertTriangle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
 export default function Dashboard() {
@@ -13,6 +13,7 @@ export default function Dashboard() {
   const { data: tasks, update: updateTask } = useFirestore<Task>('tasks');
   const { data: deals } = useFirestore<Deal>('deals');
   const { data: habits, update: updateHabit } = useFirestore<Habit>('habits');
+  const { data: workers } = useFirestore<LabourWorker>('labour');
 
   const now = new Date();
   const toAmount = (value: unknown) => {
@@ -49,6 +50,12 @@ export default function Dashboard() {
   const pendingTasks = tasks.filter(t => t.status !== 'Completed').length;
   const activeDeals = deals.filter(d => d.stage !== 'Won' && d.stage !== 'Lost').length;
   const pipelineValue = deals.filter(d => d.stage !== 'Won' && d.stage !== 'Lost').reduce((s, d) => s + d.amount, 0);
+
+  // Labour payroll summary
+  const activeWorkers = workers.filter(w => w.status === 'Active');
+  const totalWagesOwed = workers.reduce((s, w) => s + (w.balance > 0 ? w.balance : 0), 0);
+  const workersPendingPay = workers.filter(w => w.balance > 0).length;
+  const topDebtor = workers.filter(w => w.balance > 0).sort((a, b) => b.balance - a.balance)[0];
 
   const allTimeIncome = payments.reduce((sum, p) => sum + toAmount(p.amount), 0);
   const allTimeExpense = expenses.reduce((sum, e) => sum + toAmount(e.amount), 0);
@@ -378,6 +385,92 @@ export default function Dashboard() {
             </div>
           ))}
         </div>
+      </motion.div>
+
+      {/* Labour Payroll Summary Widget */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.75 }}
+        className="bg-[#111520] border border-[#1e2a40] rounded-2xl p-5 shadow-lg">
+        <h3 className="text-[11px] font-bold text-gray-400 tracking-widest uppercase mb-5 flex items-center gap-2">
+          <HardHat className="w-4 h-4" />
+          Labour Payroll Summary
+        </h3>
+        {workers.length === 0 ? (
+          <p className="text-sm text-gray-500 font-mono">No workers added yet. Add workers in the Labour section.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Total wages owed */}
+            <div className="bg-[#0b0e14] border border-[#1e2a40] rounded-2xl p-5 flex flex-col gap-2">
+              <div className="flex items-center gap-2 text-gray-500">
+                <IndianRupee className="w-4 h-4" />
+                <span className="text-[10px] font-bold uppercase tracking-widest">Total Wages Owed</span>
+              </div>
+              <p className={cn("text-2xl font-black", totalWagesOwed > 0 ? 'text-rose-400' : 'text-emerald-400')}>
+                {formatCurrency(totalWagesOwed)}
+              </p>
+              <span className={cn("text-[10px] px-2.5 py-1 rounded-full font-bold self-start", totalWagesOwed > 0 ? 'bg-rose-500/10 text-rose-400' : 'bg-emerald-500/10 text-emerald-400')}>
+                {workersPendingPay} workers unpaid
+              </span>
+            </div>
+
+            {/* Active workers */}
+            <div className="bg-[#0b0e14] border border-[#1e2a40] rounded-2xl p-5 flex flex-col gap-2">
+              <div className="flex items-center gap-2 text-gray-500">
+                <Users className="w-4 h-4" />
+                <span className="text-[10px] font-bold uppercase tracking-widest">Active Workers</span>
+              </div>
+              <p className="text-2xl font-black text-[#00d4aa]">{activeWorkers.length}</p>
+              <span className="text-[10px] px-2.5 py-1 rounded-full font-bold self-start bg-[#00d4aa]/10 text-[#00d4aa]">
+                {workers.length} total
+              </span>
+            </div>
+
+            {/* Highest pending */}
+            <div className="bg-[#0b0e14] border border-[#1e2a40] rounded-2xl p-5 flex flex-col gap-2">
+              <div className="flex items-center gap-2 text-gray-500">
+                <AlertTriangle className="w-4 h-4" />
+                <span className="text-[10px] font-bold uppercase tracking-widest">Highest Pending</span>
+              </div>
+              {topDebtor ? (
+                <>
+                  <p className="text-2xl font-black text-amber-400">{formatCurrency(topDebtor.balance)}</p>
+                  <span className="text-[10px] px-2.5 py-1 rounded-full font-bold self-start bg-amber-500/10 text-amber-400">
+                    {topDebtor.name}
+                  </span>
+                </>
+              ) : (
+                <p className="text-sm text-emerald-400 font-bold">All paid up ✓</p>
+              )}
+            </div>
+
+            {/* Worker breakdown table */}
+            {workersPendingPay > 0 && (
+              <div className="sm:col-span-3 overflow-x-auto">
+                <table className="w-full text-xs font-mono">
+                  <thead>
+                    <tr className="text-gray-600 border-b border-[#1e2a40]">
+                      <th className="text-left py-2 font-bold uppercase">Worker</th>
+                      <th className="text-left py-2 font-bold uppercase">Daily Rate</th>
+                      <th className="text-left py-2 font-bold uppercase">Status</th>
+                      <th className="text-right py-2 font-bold uppercase">Pending</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {workers.filter(w => w.balance > 0).sort((a,b) => b.balance - a.balance).map(w => (
+                      <tr key={w.id} className="border-b border-[#1e2a40]/50 last:border-0">
+                        <td className="py-2 text-gray-300 font-medium">{w.name}</td>
+                        <td className="py-2 text-gray-400">{formatCurrency(w.dailyWage)}/day</td>
+                        <td className="py-2">
+                          <span className={cn('px-1.5 py-0.5 rounded text-[9px] font-bold uppercase', w.status === 'Active' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-gray-500/10 text-gray-400')}>{w.status}</span>
+                        </td>
+                        <td className="py-2 text-right text-rose-400 font-bold">{formatCurrency(w.balance)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </motion.div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

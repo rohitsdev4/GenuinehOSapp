@@ -7,6 +7,8 @@ import PageHeader from '@/src/components/ui/PageHeader';
 import { Send, Bot, User, Loader2, Sparkles, Trash2, BookText } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
+import { buildSiteFinancials, DEFAULT_SITE_TEMPLATES } from '@/src/lib/siteFinancials';
+import { upsertReceivablesFromSites } from '@/src/lib/receivableSync';
 
 interface Message {
   role: 'user' | 'ai';
@@ -28,6 +30,7 @@ const QUICK_PROMPTS = [
   'Cash flow forecast karo',
   'Motivate karo bhai 💪',
   'Weekly review karo',
+  'Sites se receivables sync karo',
 ];
 
 const STORAGE_KEY = 'genuineos_chat_history';
@@ -66,6 +69,15 @@ export default function AIAssistant() {
     fetchFromSheet('Main!A2:J1000').then(data => {
       if (data) setSheetData(data);
     });
+  }, []);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      fetchFromSheet('Main!A1:J1000').then((data) => {
+        if (data && Array.isArray(data)) setSheetData(data);
+      });
+    }, 120000);
+    return () => window.clearInterval(id);
   }, []);
 
   useEffect(() => {
@@ -178,6 +190,10 @@ export default function AIAssistant() {
         await updateReceivable(id, rest);
         return `✅ Receivable [${id}] updated`;
       }
+      case 'syncReceivablesFromSites': {
+        const result = await upsertReceivablesFromSites(sites as Site[], receivables as Receivable[], addReceivable as any, updateReceivable as any);
+        return `✅ Receivables synced from sites. Added: ${result.added}, Updated: ${result.updated}.`;
+      }
 
       // SITES
       case 'addSite': {
@@ -197,6 +213,42 @@ export default function AIAssistant() {
         await updateSite(id, rest);
         return `✅ Site [${id}] updated`;
       }
+      case 'syncSitesFromContracts': {
+        const clientName = args.clientName || 'Surgical wholesale mart';
+        for (const template of DEFAULT_SITE_TEMPLATES) {
+          const existing = sites.find((s) => s.name.toLowerCase() === template.name.toLowerCase());
+          const { total, received, pending } = buildSiteFinancials(
+            {
+              ...template,
+              clientName,
+            },
+            payments
+          );
+          const payload: Partial<Site> = {
+            name: template.name,
+            location: template.location,
+            clientName,
+            clientId: clientName,
+            projectCount: template.projectCount,
+            baseProjectCost: template.baseProjectCost,
+            extraWorkCost: template.extraWorkCost,
+            workType: template.workType,
+            budget: total,
+            amountReceived: received,
+            amountPending: pending,
+            status: pending > 0 ? 'Active' : 'Completed',
+            progress: total > 0 ? Math.min(Math.round((received / total) * 100), 100) : 0,
+            notes: `AI sync: total ₹${total.toLocaleString('en-IN')} | received ₹${received.toLocaleString('en-IN')} | pending ₹${pending.toLocaleString('en-IN')}`,
+          };
+
+          if (existing?.id) {
+            await updateSite(existing.id, payload);
+          } else {
+            await addSite(payload as Site);
+          }
+        }
+        return `✅ Contract sites synced for client ${clientName}`;
+      }
 
       // LABOUR
       case 'addLabour': {
@@ -214,6 +266,71 @@ export default function AIAssistant() {
         const { id, ...rest } = args;
         await updateLabour(id, rest);
         return `✅ Labour [${id}] updated`;
+      }
+      case 'syncLabourFromSheet': {
+        const mode = args.mode || 'all';
+        const rows = await fetchFromSheet('Main!A1:J2000');
+        if (!rows || rows.length === 0) return '⚠️ Sheet data not available for labour sync.';
+        const labourWorkers = labour as LabourWorker[];
+
+        const normalized = (value: string) => (value || '').trim().toLowerCase();
+        const parseAmount = (value: string) => {
+          const num = Number.parseFloat(String(value || '').replace(/[,₹\s]/g, ''));
+          return Number.isFinite(num) ? num : 0;
+        };
+
+        let dataRows: string[][] = rows;
+        if (Array.isArray(rows[0])) {
+          const first = rows[0].map((v: string) => normalized(v));
+          if (first.includes('labour') || first.includes('type')) {
+            dataRows = rows.slice(1);
+          }
+        }
+
+        const labourTotals: Record<string, { paid: number; work: string }> = {};
+
+        for (const row of dataRows) {
+          const type = normalized(row[1] || '');
+          const category = normalized(row[3] || '');
+          const labourName = (row[5] || '').trim();
+          if (!labourName) continue;
+
+          const isLabourCategory = category.includes('labour') || category.includes('contract');
+          const shouldTrack = mode === 'all' ? isLabourCategory : mode === 'contract' ? category.includes('contract') || category.includes('labour') : isLabourCategory;
+          if (!shouldTrack) continue;
+
+          if (!labourTotals[labourName]) labourTotals[labourName] = { paid: 0, work: row[3] || '' };
+          if (type === 'expense') {
+            labourTotals[labourName].paid += parseAmount(row[2] || '0');
+          }
+        }
+
+        const existingByName = new Map<string, LabourWorker>(
+          labourWorkers.map((l) => [normalized(l.name), l] as [string, LabourWorker])
+        );
+        let created = 0;
+        let updated = 0;
+
+        for (const [name, values] of Object.entries(labourTotals)) {
+          const existing = existingByName.get(normalized(name));
+          const payload: Partial<LabourWorker> = {
+            name,
+            status: 'Active',
+            dailyWage: existing?.dailyWage || 0,
+            balance: values.paid,
+            notes: `${values.work || 'Labour/Contract'} | Synced via AI from Google Sheet`,
+          };
+
+          if (existing?.id) {
+            await updateLabour(existing.id, payload);
+            updated++;
+          } else {
+            await addLabour(payload as LabourWorker);
+            created++;
+          }
+        }
+
+        return `✅ Labour sync complete. ${created} created, ${updated} updated.`;
       }
 
       // CLIENTS

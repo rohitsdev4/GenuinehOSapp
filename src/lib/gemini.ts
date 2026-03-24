@@ -277,6 +277,15 @@ const updateReceivableDeclaration: FunctionDeclaration = {
   },
 };
 
+const syncReceivablesFromSitesDeclaration: FunctionDeclaration = {
+  name: "syncReceivablesFromSites",
+  description: "Create or update receivables based on current pending amount from active sites.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {},
+  },
+};
+
 const addSiteDeclaration: FunctionDeclaration = {
   name: "addSite",
   description: "Add a new site/project.",
@@ -312,6 +321,17 @@ const updateSiteDeclaration: FunctionDeclaration = {
   },
 };
 
+const syncSitesFromContractsDeclaration: FunctionDeclaration = {
+  name: "syncSitesFromContracts",
+  description: "Auto-create or update standard contract sites with payment received and pending calculations.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      clientName: { type: Type.STRING, description: "Client name for contract sites. Defaults to Surgical wholesale mart." },
+    },
+  },
+};
+
 const addLabourDeclaration: FunctionDeclaration = {
   name: "addLabour",
   description: "Add a new labour worker record.",
@@ -342,6 +362,17 @@ const updateLabourDeclaration: FunctionDeclaration = {
       notes: { type: Type.STRING },
     },
     required: ["id"],
+  },
+};
+
+const syncLabourFromSheetDeclaration: FunctionDeclaration = {
+  name: "syncLabourFromSheet",
+  description: "Read Google Sheet rows and auto-update labour entries (including contract workers) with balances.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      mode: { type: Type.STRING, enum: ["all", "contract", "active"], description: "Optional sync mode." },
+    },
   },
 };
 
@@ -446,8 +477,9 @@ export const ALL_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   addPaymentDeclaration, updatePaymentDeclaration, deletePaymentDeclaration,
   addTaskDeclaration, updateTaskDeclaration, deleteTaskDeclaration,
   addReceivableDeclaration, updateReceivableDeclaration,
-  addSiteDeclaration, updateSiteDeclaration,
-  addLabourDeclaration, updateLabourDeclaration,
+  syncReceivablesFromSitesDeclaration,
+  addSiteDeclaration, updateSiteDeclaration, syncSitesFromContractsDeclaration,
+  addLabourDeclaration, updateLabourDeclaration, syncLabourFromSheetDeclaration,
   addClientDeclaration,
   addDealDeclaration, updateDealDeclaration,
   addDiaryEntryDeclaration, updateDiaryEntryDeclaration,

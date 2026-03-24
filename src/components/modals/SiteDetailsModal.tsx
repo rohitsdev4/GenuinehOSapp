@@ -80,6 +80,40 @@ export default function SiteDetailsModal({ isOpen, onClose, site, onDelete }: Si
               </div>
             </div>
 
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="bg-[#0b0e14] p-4 rounded-xl border border-[#1e2a40]">
+                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Projects</p>
+                <p className="text-sm font-bold text-white">{site.projectCount || 1}</p>
+              </div>
+              <div className="bg-[#0b0e14] p-4 rounded-xl border border-[#1e2a40]">
+                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Base / Project</p>
+                <p className="text-sm font-bold text-white">₹{(site.baseProjectCost || 0).toLocaleString('en-IN')}</p>
+              </div>
+              <div className="bg-[#0b0e14] p-4 rounded-xl border border-[#1e2a40]">
+                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Extra Work</p>
+                <p className="text-sm font-bold text-white">₹{(site.extraWorkCost || 0).toLocaleString('en-IN')}</p>
+              </div>
+              <div className="bg-[#0b0e14] p-4 rounded-xl border border-[#1e2a40]">
+                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Work Type</p>
+                <p className="text-sm font-bold text-white">{site.workType || '-'}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-[#0b0e14] p-4 rounded-xl border border-[#1e2a40]">
+                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Client</p>
+                <p className="text-sm font-bold text-white">{site.clientName || site.clientId || '-'}</p>
+              </div>
+              <div className="bg-[#0b0e14] p-4 rounded-xl border border-[#1e2a40]">
+                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Received</p>
+                <p className="text-sm font-bold text-emerald-400">₹{(site.amountReceived || 0).toLocaleString('en-IN')}</p>
+              </div>
+              <div className="bg-[#0b0e14] p-4 rounded-xl border border-[#1e2a40]">
+                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Pending</p>
+                <p className="text-sm font-bold text-amber-400">₹{(site.amountPending || 0).toLocaleString('en-IN')}</p>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-400 font-bold">Overall Progress</span>

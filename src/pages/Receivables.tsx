@@ -6,13 +6,16 @@ import { formatCurrency } from '@/src/lib/utils';
 import AddReceivableModal from '@/src/components/modals/AddReceivableModal';
 import ConfirmModal from '@/src/components/ui/ConfirmModal';
 import { useFirestore } from '@/src/hooks/useFirestore';
-import type { Receivable } from '@/src/types';
+import type { Receivable, Site } from '@/src/types';
+import { upsertReceivablesFromSites } from '@/src/lib/receivableSync';
 
 export default function Receivables() {
-  const { data: receivables, loading, remove: removeReceivable } = useFirestore<Receivable>('receivables');
+  const { data: receivables, loading, remove: removeReceivable, add: addReceivable, update: updateReceivable } = useFirestore<Receivable>('receivables');
+  const { data: sites } = useFirestore<Site>('sites');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingReceivable, setEditingReceivable] = useState<Receivable | undefined>(undefined);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isAutoSyncing, setIsAutoSyncing] = useState(false);
 
   const handleDeleteReceivable = async () => {
     if (deletingId) {
@@ -50,23 +53,80 @@ export default function Receivables() {
     return 'Low';
   };
 
+  const pendingSitesByClient = sites.reduce<Record<string, Site[]>>((acc, site) => {
+    const client = (site.clientName || site.clientId || '').trim();
+    if (!client) return acc;
+    if ((site.amountPending || 0) <= 0) return acc;
+    if (!acc[client]) acc[client] = [];
+    acc[client].push(site);
+    return acc;
+  }, {});
+
+  const derivedClientPending = (Object.entries(pendingSitesByClient) as [string, Site[]][]).map(([client, clientSites]) => {
+    const pending = clientSites.reduce((sum, site) => sum + (site.amountPending || 0), 0);
+    const received = clientSites.reduce((sum, site) => sum + (site.amountReceived || 0), 0);
+    return { client, pending, received, sites: clientSites };
+  }).sort((a, b) => b.pending - a.pending);
+
+  const handleAutoSyncReceivables = async () => {
+    setIsAutoSyncing(true);
+    try {
+      const result = await upsertReceivablesFromSites(sites, receivables, addReceivable as any, updateReceivable as any);
+      alert(`Receivables synced: ${result.added} added, ${result.updated} updated.`);
+    } catch (error) {
+      console.error('Auto receivable sync failed:', error);
+      alert('Auto receivable sync failed.');
+    } finally {
+      setIsAutoSyncing(false);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-10">
       <PageHeader 
         title="Receivables" 
         subtitle="Monitor pending collections and dues"
         actions={
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="bg-[#00d4aa] text-[#07090f] px-4 py-2 rounded-xl font-bold flex items-center gap-2 hover:bg-[#00b894] transition cursor-pointer shadow-[0_0_15px_rgba(0,212,170,0.3)]"
-          >
-            <Plus className="w-4 h-4" />
-            Add Receivable
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleAutoSyncReceivables}
+              disabled={isAutoSyncing}
+              className="bg-[#1e2a40] text-white px-4 py-2 rounded-xl font-bold hover:bg-[#2a3b5c] transition cursor-pointer disabled:opacity-50"
+            >
+              {isAutoSyncing ? 'Syncing...' : 'Sync from Sites'}
+            </button>
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              className="bg-[#00d4aa] text-[#07090f] px-4 py-2 rounded-xl font-bold flex items-center gap-2 hover:bg-[#00b894] transition cursor-pointer shadow-[0_0_15px_rgba(0,212,170,0.3)]"
+            >
+              <Plus className="w-4 h-4" />
+              Add Receivable
+            </button>
+          </div>
         }
       />
       
       <div className="space-y-4">
+        {derivedClientPending.length > 0 && (
+          <div className="bg-[#111520] border border-[#1e2a40] rounded-2xl p-4">
+            <h3 className="text-sm font-bold text-white mb-3">Client-wise Pending from Active Sites</h3>
+            <div className="space-y-2">
+              {derivedClientPending.map((item) => (
+                <div key={item.client} className="bg-[#0b0e14] border border-[#1e2a40] rounded-xl p-3">
+                  <p className="text-white font-semibold">{item.client}</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Sites: {item.sites.map((s) => s.name).join(', ')}
+                  </p>
+                  <div className="mt-2 flex gap-4 text-xs font-mono">
+                    <span className="text-emerald-400">Received: {formatCurrency(item.received)}</span>
+                    <span className="text-amber-400">Pending: {formatCurrency(item.pending)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {receivables.length === 0 ? (
           <div className="bg-[#111520] border border-[#1e2a40] rounded-2xl p-10 text-center">
             <HandCoins className="w-12 h-12 text-gray-700 mx-auto mb-4" />
@@ -106,6 +166,11 @@ export default function Receivables() {
                       </span>
                       <span className="text-xs text-gray-400 font-mono">{daysOverdue} Days Overdue</span>
                     </div>
+                    {pendingSitesByClient[rec.partyName]?.length ? (
+                      <p className="text-xs text-gray-400 font-mono mt-2">
+                        Pending Sites: {pendingSitesByClient[rec.partyName].map((s) => s.name).join(', ')}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
 

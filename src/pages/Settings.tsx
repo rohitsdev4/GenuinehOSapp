@@ -1,26 +1,39 @@
-import { useState, useEffect, useRef, type ChangeEvent } from 'react';
+import { useState, useEffect, useRef, useCallback, type ChangeEvent } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { Settings as SettingsIcon, LogOut, Shield, Moon, Key, Save, Globe, RefreshCw, CheckCircle2, AlertCircle, Upload } from 'lucide-react';
+import {
+  Settings as SettingsIcon, LogOut, Shield, Moon, Key, Save, Globe,
+  RefreshCw, CheckCircle2, AlertCircle, Upload, Download, Plus, Trash2,
+  Clock, Zap, Link2, Layers, RotateCcw
+} from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
 import { testGeminiConnection } from '@/src/lib/gemini';
 import { useFirestore } from '@/src/hooks/useFirestore';
 import { serverTimestamp } from 'firebase/firestore';
-import { fetchFromSheet } from '@/src/lib/sync';
+import {
+  fetchFromSheet,
+  getSheetTab, saveSheetTab,
+  getLastSyncedRow, setLastSyncedRow, resetLastSyncedRow, buildSyncRange,
+  type SheetType
+} from '@/src/lib/sync';
+import type { Expense, Payment, Site } from '@/src/types';
+
+// ── Types ────────────────────────────────────────────────────────────────────
 
 type ImportedRow = {
-  date: string;
-  type: string;
-  amount: number;
-  category: string;
-  description: string;
-  labour: string;
-  site: string;
-  party: string;
-  user: string;
+  date: string; type: string; amount: number; category: string;
+  description: string; labour: string; site: string; party: string; user: string;
 };
 
+// Bug fix 1: typed wrapper instead of appending __forcetype string to raw arrays
+type TaggedRow = { row: ImportedRow; forceType?: 'expense' | 'payment' };
+
+type UnmappedRow = { date: string; type: string; amount: number; reason: string; raw: ImportedRow; };
+type AliasEntry = { alias: string; canonical: string };
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
 const normalizeKey = (value: string) =>
-  value.toLowerCase().replace(/\s+/g, '').replace(/[^a-z]/g, '');
+  value.toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9]/g, '');
 
 const parseAmount = (raw: string) => {
   if (!raw) return 0;
@@ -29,62 +42,56 @@ const parseAmount = (raw: string) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const mapRowByHeader = (row: string[], map: Record<string, number>) => {
-  const pick = (aliases: string[]) => {
-    for (const alias of aliases) {
-      const index = map[alias];
-      if (index !== undefined) return row[index] ?? '';
-    }
-    return '';
-  };
+const createSourceRowKey = (row: ImportedRow) =>
+  [row.date.trim().toLowerCase(), row.type.trim().toLowerCase(),
+   Number(row.amount || 0).toFixed(2), (row.party || '').trim().toLowerCase(),
+   (row.site || '').trim().toLowerCase(), (row.description || '').trim().toLowerCase()].join('|');
 
+const mapRowByHeader = (row: string[], map: Record<string, number>): ImportedRow => {
+  const pick = (aliases: string[]) => { for (const a of aliases) { const i = map[a]; if (i !== undefined) return row[i] ?? ''; } return ''; };
   return {
-    date: pick(['date']),
-    type: pick(['type']),
-    amount: parseAmount(pick(['amount'])),
+    date: pick(['date']), type: pick(['type']), amount: parseAmount(pick(['amount'])),
     category: pick(['category']) || 'Other',
     description: pick(['description', 'discription', 'details', 'note', 'notes']),
-    labour: pick(['labour', 'labor']),
-    site: pick(['site']),
-    party: pick(['party']),
-    user: pick(['user', 'username']),
-  } as ImportedRow;
+    labour: pick(['labour', 'labor']), site: pick(['site']),
+    party: pick(['party']), user: pick(['user', 'username']),
+  };
 };
 
-const mapRowByPosition = (row: string[]) => {
+const mapRowByPosition = (row: string[]): ImportedRow => {
   const [date, type, amount, category, description, labour, site, party, user] = row;
-  return {
-    date: date ?? '',
-    type: type ?? '',
-    amount: parseAmount(amount ?? ''),
-    category: category || 'Other',
-    description: description ?? '',
-    labour: labour ?? '',
-    site: site ?? '',
-    party: party ?? '',
-    user: user ?? '',
-  } as ImportedRow;
+  return { date: date ?? '', type: type ?? '', amount: parseAmount(amount ?? ''), category: category || 'Other', description: description ?? '', labour: labour ?? '', site: site ?? '', party: party ?? '', user: user ?? '' };
 };
 
-const normalizeImportedRows = (rows: string[][]): ImportedRow[] => {
+const normalizeImportedRows = (rows: string[][], prependedHeader?: string[]): ImportedRow[] => {
   if (!rows.length) return [];
+  let headerRow = rows[0].map(c => normalizeKey(c || ''));
+  let dataRows = rows;
+  const looksLikeHeader = headerRow.includes('date') && headerRow.includes('type') && headerRow.includes('amount');
 
-  const headerRow = rows[0].map((cell) => normalizeKey(cell || ''));
+  if (looksLikeHeader) {
+    dataRows = rows.slice(1);
+  } else if (prependedHeader) {
+    // incremental: header provided separately
+    headerRow = prependedHeader.map(c => normalizeKey(c || ''));
+    dataRows = rows;
+  }
+
   const headerMap: Record<string, number> = {};
-  headerRow.forEach((name, index) => {
-    if (name) headerMap[name] = index;
-  });
+  headerRow.forEach((n, i) => { if (n) headerMap[n] = i; });
+  const hasNamedCols = headerMap.date !== undefined && headerMap.type !== undefined && headerMap.amount !== undefined;
 
-  const looksLikeHeader =
-    headerMap.date !== undefined &&
-    headerMap.type !== undefined &&
-    headerMap.amount !== undefined;
-
-  const dataRows = looksLikeHeader ? rows.slice(1) : rows;
   return dataRows
-    .filter((row) => row && row.some((cell) => String(cell || '').trim()))
-    .map((row) => (looksLikeHeader ? mapRowByHeader(row, headerMap) : mapRowByPosition(row)));
+    .filter(r => r && r.some(c => String(c || '').trim()))
+    .map(r => hasNamedCols ? mapRowByHeader(r, headerMap) : mapRowByPosition(r));
 };
+
+const SYNC_INTERVALS = [
+  { label: '5 min', value: 5 }, { label: '15 min', value: 15 },
+  { label: '30 min', value: 30 }, { label: '60 min', value: 60 },
+];
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Settings() {
   const { user, logout } = useAuth();
@@ -98,445 +105,546 @@ export default function Settings() {
   const [geminiStatus, setGeminiStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [isTestingSheet, setIsTestingSheet] = useState(false);
   const [sheetStatus, setSheetStatus] = useState<'idle' | 'success' | 'error'>('idle');
-  
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const { add: addExpense } = useFirestore('expenses');
-  const { add: addPayment } = useFirestore('payments');
+  const [unmappedRows, setUnmappedRows] = useState<UnmappedRow[]>([]);
 
+  // Auto-sync
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(false);
+  const [autoSyncInterval, setAutoSyncInterval] = useState(15);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const autoSyncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Alias map
+  const [aliasEntries, setAliasEntries] = useState<AliasEntry[]>([]);
+  const [newAlias, setNewAlias] = useState('');
+  const [newCanonical, setNewCanonical] = useState('');
+
+  // Multi-sheet tabs
+  const [tabMain, setTabMain] = useState('Main');
+  const [tabExpenses, setTabExpenses] = useState('');
+  const [tabPayments, setTabPayments] = useState('');
+
+  // Incremental sync info
+  const [lastSyncedRow, setLastSyncedRowState] = useState(1);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { data: existingExpenses, add: addExpense } = useFirestore<Expense>('expenses');
+  const { data: existingPayments, add: addPayment } = useFirestore<Payment>('payments');
+  const { data: sites } = useFirestore<Site>('sites');
+
+  // Bug fix 2: keep always-current refs so useCallback never goes stale
+  // and the auto-sync timer doesn't reset every time Firestore data updates.
+  const existingExpensesRef = useRef(existingExpenses);
+  const existingPaymentsRef = useRef(existingPayments);
+  const addExpenseRef = useRef(addExpense);
+  const addPaymentRef = useRef(addPayment);
+  useEffect(() => { existingExpensesRef.current = existingExpenses; }, [existingExpenses]);
+  useEffect(() => { existingPaymentsRef.current = existingPayments; }, [existingPayments]);
+  useEffect(() => { addExpenseRef.current = addExpense; }, [addExpense]);
+  useEffect(() => { addPaymentRef.current = addPayment; }, [addPayment]);
+
+  // ── Load localStorage ─────────────────────────────────────────────────────
   useEffect(() => {
     const savedKey = localStorage.getItem('gemini_api_key');
     if (savedKey) {
       setApiKey(savedKey);
-      testGeminiConnection(savedKey).then(isValid => {
-        if (isValid) setGeminiStatus('success');
-        else setGeminiStatus('error');
-      });
+      testGeminiConnection(savedKey).then(ok => setGeminiStatus(ok ? 'success' : 'error'));
     }
-    
-    const savedSheetId = localStorage.getItem('google_sheet_id');
-    const savedSheetApiKey = localStorage.getItem('google_sheet_api_key');
-    
-    if (savedSheetId !== null) setSheetId(savedSheetId);
-    if (savedSheetApiKey !== null) setSheetApiKey(savedSheetApiKey);
-
-    if (savedSheetId && savedSheetApiKey) {
-      fetch(`https://sheets.googleapis.com/v4/spreadsheets/${savedSheetId}?key=${savedSheetApiKey}`)
-        .then(res => {
-          if (res.ok) setSheetStatus('success');
-        });
+    const sid = localStorage.getItem('google_sheet_id');
+    const sak = localStorage.getItem('google_sheet_api_key');
+    if (sid) setSheetId(sid);
+    if (sak) setSheetApiKey(sak);
+    if (sid && sak) {
+      fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sid}?key=${sak}`)
+        .then(r => { if (r.ok) setSheetStatus('success'); });
     }
+    // auto-sync
+    if (localStorage.getItem('auto_sync_enabled') === 'true') setAutoSyncEnabled(true);
+    const interval = localStorage.getItem('auto_sync_interval_minutes');
+    if (interval) setAutoSyncInterval(Number(interval));
+    const last = localStorage.getItem('last_synced_at');
+    if (last) setLastSyncedAt(last);
+    // aliases
+    try {
+      const raw = localStorage.getItem('site_alias_map');
+      if (raw) setAliasEntries(Object.entries<string>(JSON.parse(raw)).map(([alias, canonical]) => ({ alias, canonical })));
+    } catch (_) {}
+    // multi-sheet tabs
+    setTabMain(getSheetTab('main'));
+    setTabExpenses(localStorage.getItem('sheet_tab_expenses') || '');
+    setTabPayments(localStorage.getItem('sheet_tab_payments') || '');
+    // incremental
+    setLastSyncedRowState(getLastSyncedRow());
   }, []);
 
-  const handleCSVUpload = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Save sheet tabs to localStorage
+  const handleSaveSheetTabs = () => {
+    saveSheetTab('main', tabMain || 'Main');
+    saveSheetTab('expenses', tabExpenses);
+    saveSheetTab('payments', tabPayments);
+    alert('Sheet tab names saved!');
+  };
+
+  // ── Core sync logic ───────────────────────────────────────────────────────
+  const runSync = useCallback(async (silent = false, forceFullSync = false) => {
+    const sid = localStorage.getItem('google_sheet_id');
+    const sak = localStorage.getItem('google_sheet_api_key');
+    if (!sid || !sak) { if (!silent) alert('Please configure Google Sheets first.'); return; }
+
+    // build alias map
+    let aliasMap: Record<string, string> = {};
+    try { const r = localStorage.getItem('site_alias_map'); if (r) aliasMap = JSON.parse(r); } catch (_) {}
 
     setIsSyncing(true);
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const text = event.target?.result as string;
-      const lines = text.split('\n');
-      const headers = lines[0].split(',');
 
-      for (let i = 1; i < lines.length; i++) {
-        if (!lines[i].trim()) continue;
-        const values = lines[i].split(',');
-        const entry: any = {};
-        headers.forEach((header, index) => {
-          entry[header.trim()] = values[index]?.trim();
-        });
-
-        // Map CSV to Firestore
-        const data = {
-          date: entry.Date,
-          amount: parseAmount(entry.Amount),
-          category: entry.Category,
-          notes: entry.Discription || entry.Description || '',
-          partyName: entry.Party,
-          siteId: entry.Site,
-          partner: entry.User || '',
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        };
-
-        if (entry.Type === 'Expense') {
-          await addExpense(data);
-        } else if (entry.Type === 'Payment Received') {
-          await addPayment(data);
-        }
-      }
-      setIsSyncing(false);
-      alert('CSV data synced successfully!');
-    };
-    reader.readAsText(file);
-  };
-
-  const handleSaveKey = async () => {
-    setIsTestingGemini(true);
-    setGeminiStatus('idle');
-    
-    // If empty, just save and use default
-    if (!apiKey.trim()) {
-      localStorage.removeItem('gemini_api_key');
-      setIsSaved(true);
-      setGeminiStatus('idle');
-      setTimeout(() => setIsSaved(false), 2000);
-      setIsTestingGemini(false);
-      return;
-    }
-
-    // Test the key before saving
     try {
-      const isValid = await testGeminiConnection(apiKey);
-      
-      if (isValid) {
-        localStorage.setItem('gemini_api_key', apiKey);
-        setIsSaved(true);
-        setGeminiStatus('success');
-        setTimeout(() => setIsSaved(false), 2000);
+      // -- Determine which tabs to sync --
+      const mainTab = getSheetTab('main');
+      const expTab = localStorage.getItem('sheet_tab_expenses');
+      const payTab = localStorage.getItem('sheet_tab_payments');
+
+      // Start row for incremental
+      const lastRow = forceFullSync ? 1 : getLastSyncedRow();
+      const isIncremental = lastRow > 1;
+
+      // Fetch header row separately if doing incremental (so we know column names)
+      let headerRowData: string[] | undefined;
+      let rows: string[][] = [];
+      let newLastRow = lastRow;
+
+      // Tagged rows: typed wrapper instead of polluting the raw string[] array
+      let taggedRows: TaggedRow[] = [];
+
+      if (expTab && payTab) {
+        // Dedicated sheet tabs per type — fetch in parallel
+        const { range: eRange } = buildSyncRange(expTab, lastRow);
+        const { range: pRange } = buildSyncRange(payTab, lastRow);
+        const [eFetch, pFetch] = await Promise.all([
+          fetchFromSheet(eRange),
+          fetchFromSheet(pRange),
+        ]);
+        // Tag each set with an explicit forceType — no string mutation
+        const eParsed = normalizeImportedRows(eFetch || []);
+        const pParsed = normalizeImportedRows(pFetch || []);
+        taggedRows = [
+          ...eParsed.map(row => ({ row, forceType: 'expense' as const })),
+          ...pParsed.map(row => ({ row, forceType: 'payment' as const })),
+        ];
+        newLastRow = Math.max(lastRow + (eFetch?.length || 0), lastRow + (pFetch?.length || 0));
       } else {
-        setGeminiStatus('error');
-        // Still allow saving if user insists? No, better to keep it safe.
-        // But maybe the test failed due to network.
-        if (window.confirm('API test failed. This could be due to an invalid key or network issues. Do you want to save it anyway?')) {
-          localStorage.setItem('gemini_api_key', apiKey);
-          setIsSaved(true);
-          setTimeout(() => setIsSaved(false), 2000);
+        // Single main sheet
+        if (isIncremental) {
+          const headerFetch = await fetchFromSheet(`${mainTab}!A1:J1`);
+          headerRowData = headerFetch?.[0] || undefined;
         }
+        const { range } = buildSyncRange(mainTab, lastRow);
+        const fetched = await fetchFromSheet(range);
+        rows = fetched || [];
+        newLastRow = lastRow + rows.length;
+        const importedRows = normalizeImportedRows(rows, headerRowData);
+        taggedRows = importedRows.map(row => ({ row }));
       }
-    } catch (err) {
-      setGeminiStatus('error');
-      alert('Error testing connection. Please check your internet.');
-    } finally {
-      setIsTestingGemini(false);
-    }
-  };
 
-  const handleSaveSheetConfig = async () => {
-    setIsTestingSheet(true);
-    setSheetStatus('idle');
+      if (!taggedRows.length) {
+        if (!silent) alert(isIncremental ? 'No new rows since last sync.' : 'No data found in sheet or sheet is empty.');
+        setIsSyncing(false);
+        return;
+      }
 
-    // Basic validation
-    if (!sheetId || !sheetApiKey) {
-      setSheetStatus('error');
-      alert('Please enter both Sheet ID and API Key.');
-      setIsTestingSheet(false);
-      return;
-    }
+      let successCount = 0, errorCount = 0, skippedCount = 0;
+      const newUnmappedRows: UnmappedRow[] = [];
 
-    // Attempt to fetch sheet metadata as a test
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
-
-      const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?key=${sheetApiKey}`, {
-        signal: controller.signal
+      // Use always-current refs (Bug fix 2)
+      const existingKeys = new Set<string>();
+      [...existingExpensesRef.current, ...existingPaymentsRef.current].forEach((entry: any) => {
+        if (entry.sourceRowKey) { existingKeys.add(entry.sourceRowKey); return; }
+        const fallback: ImportedRow = { date: entry.date || '', type: entry.category === 'Payment Received' ? 'Payment Received' : 'Expense', amount: Number(entry.amount || 0), category: entry.category || '', description: entry.notes || '', labour: '', site: entry.siteId || '', party: entry.partyName || '', user: entry.partner || '' };
+        existingKeys.add(createSourceRowKey(fallback));
       });
-      
-      clearTimeout(timeoutId);
 
-      if (response.ok) {
-        localStorage.setItem('google_sheet_id', sheetId);
-        localStorage.setItem('google_sheet_api_key', sheetApiKey);
-        setIsSheetSaved(true);
-        setSheetStatus('success');
-        setTimeout(() => setIsSheetSaved(false), 2000);
-      } else {
-        const error = await response.json();
-        throw new Error(error.error?.message || 'Failed to connect to Google Sheets');
-      }
-    } catch (err: any) {
-      setSheetStatus('error');
-      if (err.name === 'AbortError') {
-        alert('Sheet Connection Timeout: The request took too long. Please check your internet.');
-      } else {
-        alert(`Sheet Connection Failed: ${err.message}`);
-      }
-    } finally {
-      setIsTestingSheet(false);
-    }
-  };
+      for (const { row, forceType } of taggedRows) {
+        // Apply site alias
+        if (row.site) { const k = normalizeKey(row.site); if (aliasMap[k]) row.site = aliasMap[k]; }
 
-  const handleSync = async () => {
-    if (!sheetId || !sheetApiKey) {
-      alert('Please configure Google Sheets first.');
-      return;
-    }
-    setIsSyncing(true);
-    
-    try {
-      const data = await fetchFromSheet('Main!A1:J1000');
-      if (!data || data.length === 0) {
-        alert('No data found in sheet or sheet is empty.');
-        setIsSyncing(false);
-        return;
-      }
-
-      let successCount = 0;
-      let errorCount = 0;
-      let skippedCount = 0;
-
-      const importedRows = normalizeImportedRows(data);
-
-      if (importedRows.length === 0) {
-        alert('Sheet has no valid transaction rows. Please verify Date, Type, and Amount columns.');
-        setIsSyncing(false);
-        return;
-      }
-
-      for (const row of importedRows) {
         if (!row.date || !row.type || !row.amount) {
           skippedCount++;
+          newUnmappedRows.push({ date: row.date, type: row.type, amount: row.amount, reason: 'Missing required field (Date/Type/Amount)', raw: row });
           continue;
         }
 
         const normalizedType = row.type.trim().toLowerCase();
-        const entry = {
-          date: row.date,
-          amount: row.amount,
-          category: row.category || 'Other',
-          notes: row.description || row.labour || '',
-          partyName: row.party || '',
-          siteId: row.site || '',
-          partner: row.user || '',
-        };
+        const sourceRowKey = createSourceRowKey(row);
+        if (existingKeys.has(sourceRowKey)) { skippedCount++; continue; }
+
+        const entry = { date: row.date, amount: row.amount, category: row.category || 'Other', notes: row.description || row.labour || '', partyName: row.party || '', siteId: row.site || '', partner: row.user || '', sourceRowKey };
+
+        // Bug fix 1: use typed forceType from wrapper, no string-in-array hack
+        const isExpense = forceType === 'expense' || normalizedType === 'expense';
+        const isPayment = forceType === 'payment' || ['payment received', 'payment', 'income'].includes(normalizedType);
 
         try {
-          if (normalizedType === 'expense') {
-            await addExpense(entry);
-            successCount++;
-          } else if (
-            normalizedType === 'payment received' ||
-            normalizedType === 'payment' ||
-            normalizedType === 'income'
-          ) {
-            await addPayment(entry);
-            successCount++;
+          if (isExpense) {
+            await addExpenseRef.current(entry); existingKeys.add(sourceRowKey); successCount++;
+          } else if (isPayment) {
+            await addPaymentRef.current(entry); existingKeys.add(sourceRowKey); successCount++;
           } else {
             skippedCount++;
+            newUnmappedRows.push({ date: row.date, type: row.type, amount: row.amount, reason: 'Type not mapped to Payment/Expense', raw: row });
           }
-        } catch (err) {
-          console.error('Error adding entry:', err);
-          errorCount++;
-        }
+        } catch { errorCount++; }
       }
-      
-      alert(
-        `Sync completed! ${successCount} imported` +
-        `${skippedCount > 0 ? `, ${skippedCount} skipped` : ''}` +
-        `${errorCount > 0 ? `, ${errorCount} failed` : ''}.`
-      );
-    } catch (error) {
-      console.error('Sync error:', error);
-      alert('Sync failed. Please check your configuration and try again.');
+
+      // Update incremental row pointer
+      setLastSyncedRow(newLastRow);
+      setLastSyncedRowState(newLastRow);
+      setUnmappedRows(newUnmappedRows);
+      const now = new Date().toLocaleString('en-IN', { hour12: true });
+      setLastSyncedAt(now);
+      localStorage.setItem('last_synced_at', now);
+
+      if (!silent) {
+        const mode = isIncremental ? '(incremental)' : '(full)';
+        alert(`Sync ${mode} done! ${successCount} imported${skippedCount > 0 ? `, ${skippedCount} skipped` : ''}${errorCount > 0 ? `, ${errorCount} failed` : ''}.`);
+      }
+    } catch (err) {
+      console.error('Sync error:', err);
+      if (!silent) alert('Sync failed. Please check your configuration.');
     } finally {
       setIsSyncing(false);
     }
+  // Bug fix 2: no data deps — refs keep values current without triggering re-creation
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Auto-sync interval ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (autoSyncTimerRef.current) { clearInterval(autoSyncTimerRef.current); autoSyncTimerRef.current = null; }
+    if (autoSyncEnabled && sheetStatus === 'success') {
+      autoSyncTimerRef.current = setInterval(() => runSync(true), autoSyncInterval * 60 * 1000);
+    }
+    return () => { if (autoSyncTimerRef.current) clearInterval(autoSyncTimerRef.current); };
+  }, [autoSyncEnabled, autoSyncInterval, sheetStatus, runSync]);
+
+  const handleToggleAutoSync = (enabled: boolean) => {
+    setAutoSyncEnabled(enabled);
+    localStorage.setItem('auto_sync_enabled', String(enabled));
+  };
+  const handleIntervalChange = (minutes: number) => {
+    setAutoSyncInterval(minutes);
+    localStorage.setItem('auto_sync_interval_minutes', String(minutes));
   };
 
+  // ── Export unmapped CSV ───────────────────────────────────────────────────
+  const handleExportUnmappedCSV = () => {
+    const headers = ['Date', 'Type', 'Amount', 'Reason', 'Party', 'Site', 'Description'];
+    const rows = unmappedRows.map(r =>
+      [r.date, r.type, r.amount, r.reason, r.raw.party, r.raw.site, r.raw.description]
+      .map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')
+    );
+    const blob = new Blob([[headers.join(','), ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `unmapped_rows_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  // ── Alias helpers ─────────────────────────────────────────────────────────
+  const handleAddAlias = () => {
+    const a = newAlias.trim(), c = newCanonical.trim();
+    if (!a || !c) return;
+    const updated = [...aliasEntries.filter(e => normalizeKey(e.alias) !== normalizeKey(a)), { alias: a, canonical: c }];
+    setAliasEntries(updated); saveAliasMap(updated); setNewAlias(''); setNewCanonical('');
+  };
+  const handleRemoveAlias = (alias: string) => {
+    const updated = aliasEntries.filter(e => e.alias !== alias);
+    setAliasEntries(updated); saveAliasMap(updated);
+  };
+  const saveAliasMap = (entries: AliasEntry[]) => {
+    const map: Record<string, string> = {};
+    entries.forEach(({ alias, canonical }) => { map[normalizeKey(alias)] = canonical; });
+    localStorage.setItem('site_alias_map', JSON.stringify(map));
+  };
+
+  // ── CSV Upload (Quick wins: dedup check + Promise.allSettled for parallel writes) ──
+  const handleCSVUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setIsSyncing(true);
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const text = ev.target?.result as string;
+      const lines = text.split('\n');
+      const headers = lines[0].split(',');
+
+      // Build dedup set from current data (Quick win 2)
+      const existingKeys = new Set<string>();
+      [...existingExpensesRef.current, ...existingPaymentsRef.current].forEach((entry: any) => {
+        if (entry.sourceRowKey) existingKeys.add(entry.sourceRowKey);
+      });
+
+      // Build all write promises (Quick win 1: parallel with allSettled)
+      const tasks: Promise<unknown>[] = [];
+      for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
+        const vals = lines[i].split(','); const entry: any = {};
+        headers.forEach((h, idx) => { entry[h.trim()] = vals[idx]?.trim(); });
+
+        // Construct a sourceRowKey for dedup (same shape as runSync)
+        const csvRow: ImportedRow = {
+          date: entry.Date || '', type: entry.Type || '', amount: parseAmount(entry.Amount),
+          category: entry.Category || 'Other', description: entry.Discription || entry.Description || '',
+          labour: '', site: entry.Site || '', party: entry.Party || '', user: entry.User || '',
+        };
+        const sourceRowKey = createSourceRowKey(csvRow);
+        if (existingKeys.has(sourceRowKey)) continue; // skip duplicate
+        existingKeys.add(sourceRowKey); // optimistic add to prevent intra-batch dups
+
+        const data = { date: csvRow.date, amount: csvRow.amount, category: csvRow.category, notes: csvRow.description, partyName: csvRow.party, siteId: csvRow.site, partner: csvRow.user, sourceRowKey, createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
+        if (entry.Type === 'Expense') tasks.push(addExpenseRef.current(data) as Promise<unknown>);
+        else if (entry.Type === 'Payment Received') tasks.push(addPaymentRef.current(data) as Promise<unknown>);
+      }
+
+      const results = await Promise.allSettled(tasks);
+      const failed = results.filter(r => r.status === 'rejected').length;
+      setIsSyncing(false);
+      alert(`CSV import done! ${tasks.length - failed} written${failed > 0 ? `, ${failed} failed` : ''}.`);
+    };
+    reader.readAsText(file);
+  };
+
+  // ── Gemini ────────────────────────────────────────────────────────────────
+  const handleSaveKey = async () => {
+    setIsTestingGemini(true); setGeminiStatus('idle');
+    if (!apiKey.trim()) { localStorage.removeItem('gemini_api_key'); setIsSaved(true); setGeminiStatus('idle'); setTimeout(() => setIsSaved(false), 2000); setIsTestingGemini(false); return; }
+    try {
+      const ok = await testGeminiConnection(apiKey);
+      if (ok) { localStorage.setItem('gemini_api_key', apiKey); setIsSaved(true); setGeminiStatus('success'); setTimeout(() => setIsSaved(false), 2000); }
+      else { setGeminiStatus('error'); if (window.confirm('Test failed. Save anyway?')) { localStorage.setItem('gemini_api_key', apiKey); setIsSaved(true); setTimeout(() => setIsSaved(false), 2000); } }
+    } catch { setGeminiStatus('error'); alert('Error testing connection.'); }
+    finally { setIsTestingGemini(false); }
+  };
+
+  // ── Sheet config ──────────────────────────────────────────────────────────
+  const handleSaveSheetConfig = async () => {
+    setIsTestingSheet(true); setSheetStatus('idle');
+    if (!sheetId || !sheetApiKey) { setSheetStatus('error'); alert('Enter both Sheet ID and API Key.'); setIsTestingSheet(false); return; }
+    try {
+      const ctrl = new AbortController(); const tid = setTimeout(() => ctrl.abort(), 10000);
+      const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?key=${sheetApiKey}`, { signal: ctrl.signal });
+      clearTimeout(tid);
+      if (res.ok) { localStorage.setItem('google_sheet_id', sheetId); localStorage.setItem('google_sheet_api_key', sheetApiKey); setIsSheetSaved(true); setSheetStatus('success'); setTimeout(() => setIsSheetSaved(false), 2000); }
+      else { const err = await res.json(); throw new Error(err.error?.message || 'Failed to connect'); }
+    } catch (err: any) { setSheetStatus('error'); alert(err.name === 'AbortError' ? 'Timeout.' : `Connection Failed: ${err.message}`); }
+    finally { setIsTestingSheet(false); }
+  };
+
+  const siteNames = sites.map(s => s.name).filter(Boolean);
   const sections = [
-    { title: 'Profile', icon: SettingsIcon, items: [
-      { label: 'Display Name', value: user?.displayName || 'Rohit Kumar' },
-      { label: 'Email', value: user?.email || 'rohit@example.com' },
-    ]},
-    { title: 'Preferences', icon: Moon, items: [
-      { label: 'Theme', value: 'Dark Mode (Default)' },
-      { label: 'Language', value: 'Hinglish / English' },
-    ]},
-    { title: 'Security', icon: Shield, items: [
-      { label: 'Account Status', value: 'Verified' },
-      { label: 'Data Sync', value: 'Real-time Enabled' },
-    ]},
+    { title: 'Profile', icon: SettingsIcon, items: [{ label: 'Display Name', value: user?.displayName || 'Rohit Kumar' }, { label: 'Email', value: user?.email || '' }] },
+    { title: 'Preferences', icon: Moon, items: [{ label: 'Theme', value: 'Dark Mode (Default)' }, { label: 'Language', value: 'Hinglish / English' }] },
+    { title: 'Security', icon: Shield, items: [{ label: 'Account Status', value: 'Verified' }, { label: 'Data Sync', value: 'Real-time Enabled' }] },
   ];
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-8 max-w-5xl mx-auto pb-10">
-      <PageHeader 
-        title="Settings" 
-        subtitle="Manage your account and app preferences"
-      />
+      <PageHeader title="Settings" subtitle="Manage your account and app preferences" />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {sections.map((section) => (
-          <div key={section.title} className="bg-[#111520] border border-[#1e2a40] rounded-2xl overflow-hidden shadow-xl">
-            <div className="p-5 border-b border-[#1e2a40] flex items-center gap-2">
-              <section.icon className="w-4 h-4 text-[#00d4aa]" />
-              <h3 className="font-bold text-white">{section.title}</h3>
-            </div>
-            <div className="p-5 space-y-4">
-              {section.items.map((item) => (
-                <div key={item.label} className="flex justify-between items-center">
-                  <span className="text-sm text-gray-500">{item.label}</span>
-                  <span className="text-sm font-medium text-white">{item.value}</span>
-                </div>
-              ))}
-            </div>
+        {/* Profile / Prefs / Security */}
+        {sections.map(s => (
+          <div key={s.title} className="bg-[#111520] border border-[#1e2a40] rounded-2xl overflow-hidden shadow-xl">
+            <div className="p-5 border-b border-[#1e2a40] flex items-center gap-2"><s.icon className="w-4 h-4 text-[#00d4aa]" /><h3 className="font-bold text-white">{s.title}</h3></div>
+            <div className="p-5 space-y-4">{s.items.map(item => (<div key={item.label} className="flex justify-between items-center"><span className="text-sm text-gray-500">{item.label}</span><span className="text-sm font-medium text-white">{item.value}</span></div>))}</div>
           </div>
         ))}
 
-        {/* AI Settings */}
+        {/* AI */}
         <div className="bg-[#111520] border border-[#1e2a40] rounded-2xl overflow-hidden shadow-xl md:col-span-2">
-          <div className="p-5 border-b border-[#1e2a40] flex items-center gap-2">
-            <Key className="w-4 h-4 text-[#00d4aa]" />
-            <h3 className="font-bold text-white">AI Assistant Configuration</h3>
-          </div>
+          <div className="p-5 border-b border-[#1e2a40] flex items-center gap-2"><Key className="w-4 h-4 text-[#00d4aa]" /><h3 className="font-bold text-white">AI Assistant Configuration</h3></div>
           <div className="p-5 space-y-4">
             <div className="space-y-2">
               <label className="text-sm text-gray-400 font-bold block">Google Gemini API Key</label>
               <div className="flex gap-2">
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="Enter your Gemini API Key..."
-                  className="flex-1 bg-[#0b0e14] border border-[#1e2a40] rounded-xl px-4 py-2 text-white outline-none focus:border-[#00d4aa] transition font-mono text-sm"
-                />
-                <button
-                  onClick={handleSaveKey}
-                  disabled={isTestingGemini}
-                  className="bg-[#00d4aa] text-[#07090f] px-4 py-2 rounded-xl font-bold flex items-center gap-2 hover:bg-[#00b894] transition cursor-pointer disabled:opacity-50"
-                >
-                  {isTestingGemini ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Save className="w-4 h-4" />
-                  )}
+                <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="Enter your Gemini API Key..." className="flex-1 bg-[#0b0e14] border border-[#1e2a40] rounded-xl px-4 py-2 text-white outline-none focus:border-[#00d4aa] transition font-mono text-sm" />
+                <button onClick={handleSaveKey} disabled={isTestingGemini} className="bg-[#00d4aa] text-[#07090f] px-4 py-2 rounded-xl font-bold flex items-center gap-2 hover:bg-[#00b894] transition cursor-pointer disabled:opacity-50">
+                  {isTestingGemini ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   {isSaved ? 'Saved!' : isTestingGemini ? 'Testing...' : 'Save & Test'}
                 </button>
               </div>
-              {geminiStatus === 'success' && (
-                <div className="flex items-center gap-2 text-emerald-400 text-xs mt-1">
-                  <CheckCircle2 className="w-3 h-3" />
-                  <span>Connection established successfully!</span>
-                </div>
-              )}
-              {geminiStatus === 'error' && (
-                <div className="flex items-center gap-2 text-rose-400 text-xs mt-1">
-                  <AlertCircle className="w-3 h-3" />
-                  <span>Invalid API Key. Please verify.</span>
-                </div>
-              )}
-              <p className="text-xs text-gray-500">
-                Get your free API key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-[#00d4aa] hover:underline">Google AI Studio</a>. This key is stored locally on your device.
-              </p>
+              {geminiStatus === 'success' && <div className="flex items-center gap-2 text-emerald-400 text-xs"><CheckCircle2 className="w-3 h-3" /><span>Connected!</span></div>}
+              {geminiStatus === 'error' && <div className="flex items-center gap-2 text-rose-400 text-xs"><AlertCircle className="w-3 h-3" /><span>Invalid API Key.</span></div>}
+              <p className="text-xs text-gray-500">Get key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-[#00d4aa] hover:underline">AI Studio</a>. Stored locally.</p>
             </div>
           </div>
         </div>
 
+        {/* Google Sheets */}
         <div className="bg-[#111520] border border-[#1e2a40] rounded-2xl overflow-hidden shadow-xl md:col-span-2">
           <div className="p-5 border-b border-[#1e2a40] flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Globe className="w-4 h-4 text-[#00d4aa]" />
-              <h3 className="font-bold text-white">Google Sheets Integration</h3>
+            <div className="flex items-center gap-2"><Globe className="w-4 h-4 text-[#00d4aa]" /><h3 className="font-bold text-white">Google Sheets Integration</h3></div>
+            {sheetStatus === 'success' && <div className="flex items-center gap-2 bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-emerald-500/20"><div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />Connected</div>}
+          </div>
+          <div className="p-5 space-y-6">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div><p className="text-sm font-bold text-white">Sync Payments & Expenses</p><p className="text-xs text-gray-400 mt-1">Pull data from Google Sheet into GenuineOS.</p></div>
+              <div className="flex gap-2 flex-wrap">
+                <input type="file" accept=".csv" ref={fileInputRef} onChange={handleCSVUpload} className="hidden" />
+                <button onClick={() => fileInputRef.current?.click()} className="bg-[#1e2a40] text-white px-4 py-2 rounded-xl font-bold hover:bg-[#2a3b5c] transition cursor-pointer text-sm flex items-center gap-2"><Upload className="w-4 h-4" />Upload CSV</button>
+                <button onClick={() => runSync(false, false)} disabled={isSyncing || sheetStatus !== 'success'} className="bg-[#1e2a40] text-white px-4 py-2 rounded-xl font-bold hover:bg-[#2a3b5c] transition cursor-pointer text-sm flex items-center gap-2 disabled:opacity-50">
+                  <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />{isSyncing ? 'Syncing...' : 'Sync Now'}
+                </button>
+                <button onClick={() => { resetLastSyncedRow(); setLastSyncedRowState(1); runSync(false, true); }} disabled={isSyncing || sheetStatus !== 'success'} className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-4 py-2 rounded-xl font-bold hover:bg-amber-500/20 transition cursor-pointer text-sm flex items-center gap-2 disabled:opacity-50" title="Force full re-sync from row 1">
+                  <RotateCcw className="w-4 h-4" />Full Re-Sync
+                </button>
+              </div>
             </div>
-            {sheetStatus === 'success' && (
-              <div className="flex items-center gap-2 bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-emerald-500/20">
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Connected
+
+            {/* Incremental sync info */}
+            <div className="flex items-center gap-3 px-4 py-3 bg-[#0b0e14] border border-[#1e2a40] rounded-xl text-xs text-gray-400">
+              <RefreshCw className="w-4 h-4 text-[#00d4aa] shrink-0" />
+              <span>
+                <span className="font-bold text-white">Incremental Sync:</span> Next sync will start from row <span className="font-mono text-[#00d4aa]">{lastSyncedRow}</span>
+                {lastSyncedRow <= 1 ? ' (full sync on next run)' : ' — only new rows will be imported.'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-[#1e2a40]">
+              <div className="space-y-2"><label className="text-sm text-gray-400 font-bold block">Google Sheet ID</label><input type="text" value={sheetId} onChange={e => setSheetId(e.target.value)} placeholder="e.g. 1BxiMVs0XRA5..." className="w-full bg-[#0b0e14] border border-[#1e2a40] rounded-xl px-4 py-2 text-white outline-none focus:border-[#00d4aa] transition font-mono text-sm" /></div>
+              <div className="space-y-2"><label className="text-sm text-gray-400 font-bold block">Google Sheets API Key</label><input type="password" value={sheetApiKey} onChange={e => setSheetApiKey(e.target.value)} placeholder="Your Google Cloud API Key..." className="w-full bg-[#0b0e14] border border-[#1e2a40] rounded-xl px-4 py-2 text-white outline-none focus:border-[#00d4aa] transition font-mono text-sm" /></div>
+            </div>
+            <div className="flex justify-between items-center">
+              <div>{sheetStatus === 'success' && <span className="flex items-center gap-2 text-emerald-400 text-xs"><CheckCircle2 className="w-3 h-3" />Sheet connected!</span>}{sheetStatus === 'error' && <span className="flex items-center gap-2 text-rose-400 text-xs"><AlertCircle className="w-3 h-3" />Connection failed.</span>}</div>
+              <button onClick={handleSaveSheetConfig} disabled={isTestingSheet} className="bg-[#00d4aa] text-[#07090f] px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-[#00b894] transition cursor-pointer disabled:opacity-50">
+                {isTestingSheet ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}{isSheetSaved ? 'Config Saved!' : isTestingSheet ? 'Testing...' : 'Save & Test Connection'}
+              </button>
+            </div>
+            <p className="text-xs text-gray-500">Get API key from <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer" className="text-[#00d4aa] hover:underline">Google Cloud Console</a>.</p>
+          </div>
+        </div>
+
+        {/* ── Multi-Sheet Tab Config ── */}
+        <div className="bg-[#111520] border border-[#1e2a40] rounded-2xl overflow-hidden shadow-xl md:col-span-2">
+          <div className="p-5 border-b border-[#1e2a40] flex items-center gap-2">
+            <Layers className="w-4 h-4 text-[#00d4aa]" />
+            <div><h3 className="font-bold text-white">Multi-Sheet Tab Configuration</h3></div>
+          </div>
+          <div className="p-5 space-y-5">
+            <p className="text-xs text-gray-400">
+              By default all data is pulled from a single <span className="font-mono text-[#00d4aa]">Main</span> sheet tab.
+              Optionally assign <strong className="text-white">separate tabs</strong> for Expenses and Payments — if both are set, the main tab is ignored during sync.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs text-gray-500 font-bold uppercase tracking-wide">Main / Default Tab</label>
+                <input type="text" value={tabMain} onChange={e => setTabMain(e.target.value)} placeholder="Main" className="w-full bg-[#0b0e14] border border-[#1e2a40] rounded-xl px-3 py-2 text-white outline-none focus:border-[#00d4aa] transition font-mono text-sm" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs text-gray-500 font-bold uppercase tracking-wide">Expenses Tab <span className="text-gray-600">(optional)</span></label>
+                <input type="text" value={tabExpenses} onChange={e => setTabExpenses(e.target.value)} placeholder="e.g. Expenses" className="w-full bg-[#0b0e14] border border-[#1e2a40] rounded-xl px-3 py-2 text-white outline-none focus:border-[#00d4aa] transition font-mono text-sm" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs text-gray-500 font-bold uppercase tracking-wide">Payments Tab <span className="text-gray-600">(optional)</span></label>
+                <input type="text" value={tabPayments} onChange={e => setTabPayments(e.target.value)} placeholder="e.g. Payments" className="w-full bg-[#0b0e14] border border-[#1e2a40] rounded-xl px-3 py-2 text-white outline-none focus:border-[#00d4aa] transition font-mono text-sm" />
+              </div>
+            </div>
+            {tabExpenses && tabPayments && (
+              <div className="flex items-center gap-2 bg-[#00d4aa]/5 border border-[#00d4aa]/20 text-[#00d4aa] text-xs px-4 py-2.5 rounded-xl">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>Both dedicated tabs set — sync will pull Expenses from <strong className="font-mono">{tabExpenses}</strong> and Payments from <strong className="font-mono">{tabPayments}</strong>.</span>
+              </div>
+            )}
+            <button onClick={handleSaveSheetTabs} className="bg-[#00d4aa] text-[#07090f] px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-[#00b894] transition cursor-pointer">
+              <Save className="w-4 h-4" />Save Tab Names
+            </button>
+          </div>
+        </div>
+
+        {/* Auto-Sync */}
+        <div className="bg-[#111520] border border-[#1e2a40] rounded-2xl overflow-hidden shadow-xl md:col-span-2">
+          <div className="p-5 border-b border-[#1e2a40] flex items-center justify-between">
+            <div className="flex items-center gap-2"><Zap className="w-4 h-4 text-[#00d4aa]" /><h3 className="font-bold text-white">Background Auto-Sync</h3></div>
+            {autoSyncEnabled && sheetStatus === 'success' && <div className="flex items-center gap-2 bg-[#00d4aa]/10 text-[#00d4aa] px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-[#00d4aa]/20"><div className="w-1.5 h-1.5 rounded-full bg-[#00d4aa] animate-pulse" />Auto-Sync Active</div>}
+          </div>
+          <div className="p-5 space-y-5">
+            <div className="flex items-center justify-between">
+              <div><p className="text-sm font-bold text-white">Enable Automatic Sync</p><p className="text-xs text-gray-400 mt-1">Pulls new rows automatically in the background.</p></div>
+              <button onClick={() => handleToggleAutoSync(!autoSyncEnabled)} disabled={sheetStatus !== 'success'} aria-pressed={autoSyncEnabled} className={`relative w-12 h-6 rounded-full transition-colors duration-300 focus:outline-none cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${autoSyncEnabled ? 'bg-[#00d4aa]' : 'bg-[#1e2a40]'}`}>
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-300 ${autoSyncEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
+              </button>
+            </div>
+            <div className="flex items-center gap-4 pt-4 border-t border-[#1e2a40]">
+              <div className="flex items-center gap-2 text-gray-400"><Clock className="w-4 h-4" /><span className="text-sm">Interval</span></div>
+              <div className="flex gap-2">{SYNC_INTERVALS.map(({ label, value }) => (<button key={value} onClick={() => handleIntervalChange(value)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${autoSyncInterval === value ? 'bg-[#00d4aa] text-[#07090f]' : 'bg-[#1e2a40] text-gray-300 hover:bg-[#2a3b5c]'}`}>{label}</button>))}</div>
+            </div>
+            {lastSyncedAt && <div className="flex items-center gap-2 text-gray-500 text-xs pt-2 border-t border-[#1e2a40]"><CheckCircle2 className="w-3 h-3 text-emerald-400" /><span>Last synced: <span className="text-gray-300 font-medium">{lastSyncedAt}</span></span></div>}
+            {sheetStatus !== 'success' && <p className="text-xs text-amber-500/80 flex items-center gap-1"><AlertCircle className="w-3 h-3" />Connect Google Sheet first.</p>}
+          </div>
+        </div>
+
+        {/* Site Alias Mapping */}
+        <div className="bg-[#111520] border border-[#1e2a40] rounded-2xl overflow-hidden shadow-xl md:col-span-2">
+          <div className="p-5 border-b border-[#1e2a40] flex items-center gap-2"><Link2 className="w-4 h-4 text-[#00d4aa]" /><h3 className="font-bold text-white">Site Alias Mapping</h3></div>
+          <div className="p-5 space-y-5">
+            <p className="text-xs text-gray-400">Map alternative names from your sheet to canonical site names. E.g. <span className="text-amber-400 font-mono">Ludhiana-1</span> → <span className="text-emerald-400 font-mono">Ludhiana</span></p>
+            <div className="flex gap-2 items-end">
+              <div className="flex-1 space-y-1"><label className="text-xs text-gray-500 font-bold">Sheet Alias</label><input type="text" value={newAlias} onChange={e => setNewAlias(e.target.value)} placeholder="e.g. Ludhiana-1" className="w-full bg-[#0b0e14] border border-[#1e2a40] rounded-xl px-3 py-2 text-white outline-none focus:border-[#00d4aa] transition text-sm" /></div>
+              <div className="text-gray-500 pb-2 text-lg">→</div>
+              <div className="flex-1 space-y-1">
+                <label className="text-xs text-gray-500 font-bold">Canonical Site Name</label>
+                {siteNames.length > 0 ? (
+                  <select value={newCanonical} onChange={e => setNewCanonical(e.target.value)} className="w-full bg-[#0b0e14] border border-[#1e2a40] rounded-xl px-3 py-2 text-white outline-none focus:border-[#00d4aa] transition text-sm">
+                    <option value="">Select site...</option>
+                    {siteNames.map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                ) : (
+                  <input type="text" value={newCanonical} onChange={e => setNewCanonical(e.target.value)} placeholder="e.g. Ludhiana" className="w-full bg-[#0b0e14] border border-[#1e2a40] rounded-xl px-3 py-2 text-white outline-none focus:border-[#00d4aa] transition text-sm" />
+                )}
+              </div>
+              <button onClick={handleAddAlias} disabled={!newAlias.trim() || !newCanonical.trim()} className="bg-[#00d4aa] text-[#07090f] px-3 py-2 rounded-xl font-bold flex items-center gap-1 hover:bg-[#00b894] transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"><Plus className="w-4 h-4" />Add</button>
+            </div>
+            {aliasEntries.length === 0 ? (
+              <p className="text-xs text-gray-600 text-center py-4 border border-dashed border-[#1e2a40] rounded-xl">No aliases configured yet.</p>
+            ) : (
+              <div className="space-y-2 max-h-52 overflow-y-auto">
+                {aliasEntries.map(({ alias, canonical }) => (
+                  <div key={alias} className="flex items-center justify-between bg-[#0b0e14] border border-[#1e2a40] rounded-xl px-4 py-2.5">
+                    <div className="flex items-center gap-3 text-sm"><span className="text-amber-400 font-mono">{alias}</span><span className="text-gray-500">→</span><span className="text-emerald-400 font-mono">{canonical}</span></div>
+                    <button onClick={() => handleRemoveAlias(alias)} className="text-gray-600 hover:text-rose-400 transition cursor-pointer"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                ))}
               </div>
             )}
           </div>
-          <div className="p-5 space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-bold text-white">Sync Payments & Expenses</p>
-                <p className="text-xs text-gray-400 mt-1">Automatically sync data between GenuineOS and your Google Sheet.</p>
-              </div>
-              <div className="flex gap-2">
-                <input type="file" accept=".csv" ref={fileInputRef} onChange={handleCSVUpload} className="hidden" />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="bg-[#1e2a40] text-white px-4 py-2 rounded-xl font-bold hover:bg-[#2a3b5c] transition cursor-pointer text-sm flex items-center gap-2"
-                >
-                  <Upload className="w-4 h-4" />
-                  Upload CSV
-                </button>
-                <button
-                  onClick={handleSync}
-                  disabled={isSyncing || sheetStatus !== 'success'}
-                  className="bg-[#1e2a40] text-white px-4 py-2 rounded-xl font-bold hover:bg-[#2a3b5c] transition cursor-pointer text-sm flex items-center gap-2 disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                  {isSyncing ? 'Syncing...' : 'Sync Now'}
-                </button>
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-[#1e2a40]">
-              <div className="space-y-2">
-                <label className="text-sm text-gray-400 font-bold block">Google Sheet ID</label>
-                <input
-                  type="text"
-                  value={sheetId}
-                  onChange={(e) => setSheetId(e.target.value)}
-                  placeholder="e.g. 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
-                  className="w-full bg-[#0b0e14] border border-[#1e2a40] rounded-xl px-4 py-2 text-white outline-none focus:border-[#00d4aa] transition font-mono text-sm"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm text-gray-400 font-bold block">Google Sheets API Key</label>
-                <input
-                  type="password"
-                  value={sheetApiKey}
-                  onChange={(e) => setSheetApiKey(e.target.value)}
-                  placeholder="Enter your Google Cloud API Key..."
-                  className="w-full bg-[#0b0e14] border border-[#1e2a40] rounded-xl px-4 py-2 text-white outline-none focus:border-[#00d4aa] transition font-mono text-sm"
-                />
-              </div>
-            </div>
+        </div>
 
-            <div className="flex justify-between items-center">
-              <div className="flex gap-4">
-                {sheetStatus === 'success' && (
-                  <div className="flex items-center gap-2 text-emerald-400 text-xs">
-                    <CheckCircle2 className="w-3 h-3" />
-                    <span>Sheet connected!</span>
+        {/* Unmapped Rows */}
+        <div className="bg-[#111520] border border-[#1e2a40] rounded-2xl overflow-hidden shadow-xl md:col-span-2">
+          <div className="p-5 border-b border-[#1e2a40] flex items-center justify-between">
+            <div><h3 className="font-bold text-white">Unmapped Sheet Rows</h3><p className="text-xs text-gray-500 mt-1">Rows skipped during sync because type/fields could not be mapped.</p></div>
+            {unmappedRows.length > 0 && <button onClick={handleExportUnmappedCSV} className="bg-[#1e2a40] text-white px-4 py-2 rounded-xl font-bold hover:bg-[#2a3b5c] transition cursor-pointer text-sm flex items-center gap-2"><Download className="w-4 h-4" />Export CSV ({unmappedRows.length})</button>}
+          </div>
+          <div className="p-5">
+            {unmappedRows.length === 0 ? <p className="text-sm text-gray-500">No unmapped rows in latest sync.</p> : (
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {unmappedRows.slice(0, 50).map((row, i) => (
+                  <div key={`${row.date}-${i}`} className="bg-[#0b0e14] border border-[#1e2a40] rounded-lg p-3">
+                    <p className="text-xs text-rose-400 font-semibold">{row.reason}</p>
+                    <p className="text-xs text-gray-300 mt-1">{row.date || 'N/A'} | {row.type || 'N/A'} | ₹{row.amount.toLocaleString('en-IN')} | {row.raw.party || '-'} | {row.raw.site || '-'}</p>
                   </div>
-                )}
-                {sheetStatus === 'error' && (
-                  <div className="flex items-center gap-2 text-rose-400 text-xs">
-                    <AlertCircle className="w-3 h-3" />
-                    <span>Connection failed.</span>
-                  </div>
-                )}
+                ))}
               </div>
-              <button
-                onClick={handleSaveSheetConfig}
-                disabled={isTestingSheet}
-                className="bg-[#00d4aa] text-[#07090f] px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-[#00b894] transition cursor-pointer disabled:opacity-50"
-              >
-                {isTestingSheet ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-                {isSheetSaved ? 'Config Saved!' : isTestingSheet ? 'Testing...' : 'Save & Test Connection'}
-              </button>
-            </div>
-
-            <p className="text-xs text-gray-500">
-              Get your API key from the <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer" className="text-[#00d4aa] hover:underline">Google Cloud Console</a>. Ensure the Google Sheets API is enabled for your project.
-            </p>
+            )}
           </div>
         </div>
 
+        {/* Danger Zone */}
         <div className="bg-rose-500/5 border border-rose-500/20 rounded-2xl p-6 flex flex-col items-center justify-center text-center md:col-span-2">
           <h3 className="text-rose-400 font-bold mb-2">Danger Zone</h3>
           <p className="text-xs text-rose-400/60 mb-6">Logging out will end your current session on this device.</p>
-          <button 
-            onClick={() => logout()}
-            className="w-full max-w-sm bg-rose-500 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-rose-600 transition cursor-pointer"
-          >
-            <LogOut className="w-4 h-4" />
-            Logout from GenuineOS
-          </button>
+          <button onClick={() => logout()} className="w-full max-w-sm bg-rose-500 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-rose-600 transition cursor-pointer"><LogOut className="w-4 h-4" />Logout from GenuineOS</button>
         </div>
       </div>
-      
-      <div className="text-center pt-8">
-        <p className="text-[10px] text-gray-600 uppercase tracking-widest font-bold">GenuineOS v3.0.0</p>
-        <p className="text-[10px] text-gray-700 mt-1">© 2026 Genuine Hospi Enterprises</p>
-      </div>
+      <div className="text-center pt-8"><p className="text-[10px] text-gray-600 uppercase tracking-widest font-bold">GenuineOS v3.0.0</p><p className="text-[10px] text-gray-700 mt-1">© 2026 Genuine Hospi Enterprises</p></div>
     </div>
   );
 }
