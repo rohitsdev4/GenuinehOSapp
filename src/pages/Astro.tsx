@@ -64,7 +64,7 @@ export default function Astro() {
     try {
       const res = await callGemini({
         prompt: text,
-        model: 'gemini-3.1-flash-lite-preview',
+        model: 'gemini-2.0-flash',
         systemInstruction: "You are an expert Astro Business Advisor for Rohit Kumar, a business owner in the medical infrastructure and gas pipeline industry. Provide guidance based on Vedic Astrology principles mixed with practical business wisdom. Use a mix of Hindi and English (Hinglish). Be encouraging, wise, and slightly mystical but grounded in business reality.",
         maxTokens: 500,
         history: messages.map(m => ({ role: m.role, text: m.text })),
@@ -76,7 +76,8 @@ export default function Astro() {
         time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
       }]);
     } catch (err: any) {
-      let errorText = '❌ Sitare connect nahi ho paa rahe. Internet check karo.';
+      let errorText = '❌ Sitare connect nahi ho paa rahe. Network ya server issue ho sakta hai.';
+      if (err.message === 'RATE_LIMIT') errorText = '⚠️ Abhi asman mein sitare thode busy hain (rate limit). Thodi der baad dubara puchiye.';
       setMessages(prev => [...prev, {
         role: 'ai',
         text: errorText,

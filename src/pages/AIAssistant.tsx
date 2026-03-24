@@ -49,7 +49,7 @@ export default function AIAssistant() {
   });
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [model, setModel] = useState<GeminiModel>('gemini-3.1-flash-lite-preview');
+  const [model, setModel] = useState<GeminiModel>('gemini-2.0-flash');
   const [sheetData, setSheetData] = useState<any[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -431,9 +431,9 @@ export default function AIAssistant() {
         model: res.model,
       }]);
     } catch (err: any) {
-      let errorText = '❌ AI abhi available nahi. Internet check karo.';
+      let errorText = '❌ AI abhi available nahi hai. Network ya server issue ho sakta hai.';
       if (err.message === 'INVALID_API_KEY') errorText = '❌ Invalid API Key! Settings mein jaakar sahi key enter karein.';
-      else if (err.message === 'RATE_LIMIT') errorText = '⚠️ Quota khatam ho gayi. Thodi der baad try karo ya model badlo.';
+      else if (err.message === 'RATE_LIMIT') errorText = '⚠️ System thoda busy hai ya limit hit ho gayi hai. Thodi der baad try karo ya Settings mein flash model switch karo.';
       setMessages(prev => [...prev, { role: 'ai', text: errorText, time }]);
     } finally {
       setLoading(false);
@@ -452,6 +452,7 @@ export default function AIAssistant() {
               onChange={e => setModel(e.target.value as GeminiModel)}
               className="bg-[#111520] border border-[#1e2a40] text-xs text-gray-300 rounded-lg px-3 py-2 outline-none focus:border-[#00d4aa] transition"
             >
+              <option value="gemini-2.0-flash">🚀 Flash 2.0 (Fast & Smart)</option>
               <option value="gemini-3.1-flash-lite-preview">⚡ Flash-Lite (1000/day)</option>
               <option value="gemini-3-flash-preview">🔵 Flash (250/day)</option>
               <option value="gemini-3.1-pro-preview">🧠 Pro (100/day)</option>

@@ -3,6 +3,7 @@ import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 const API_KEY = process.env.GEMINI_API_KEY;
 
 export type GeminiModel =
+  | 'gemini-2.0-flash'
   | 'gemini-3.1-flash-lite-preview'
   | 'gemini-3-flash-preview'
   | 'gemini-3.1-pro-preview'
@@ -488,9 +489,15 @@ export const ALL_TOOL_DECLARATIONS: FunctionDeclaration[] = [
 
 // ─── Main API Call ────────────────────────────────────────────────────────────
 
+// ─── Helper for Retry Logic ───────────────────────────────────────────────────
+
+async function delay(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 export async function callGemini({
   prompt,
-  model = 'gemini-3.1-flash-lite-preview',
+  model = 'gemini-2.0-flash',
   context = '',
   systemInstruction = SYSTEM_PROMPT,
   maxTokens = 800,
@@ -512,40 +519,59 @@ export async function callGemini({
 
   fullPrompt += `User Query: ${prompt}`;
 
-  try {
-    const response = await ai.models.generateContent({
-      model: model,
-      contents: fullPrompt,
-      config: {
-        systemInstruction: systemInstruction,
-        maxOutputTokens: maxTokens,
-        temperature: 0.7,
-        tools: [{ functionDeclarations: ALL_TOOL_DECLARATIONS }],
-      },
-    });
+  const maxRetries = 3;
+  let attempt = 0;
 
-    const text = response.text || '';
-    const functionCalls = response.functionCalls;
-    
-    return { text, model, cached: false, functionCalls };
-  } catch (error: any) {
-    console.error("Gemini API Error:", error);
-    const errorMessage = error.message || String(error);
-    if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('invalid API key')) {
-      throw new Error('INVALID_API_KEY');
+  while (attempt <= maxRetries) {
+    try {
+      const response = await ai.models.generateContent({
+        model: model,
+        contents: fullPrompt,
+        config: {
+          systemInstruction: systemInstruction,
+          maxOutputTokens: maxTokens,
+          temperature: 0.7,
+          tools: [{ functionDeclarations: ALL_TOOL_DECLARATIONS }],
+        },
+      });
+
+      const text = response.text || '';
+      const functionCalls = response.functionCalls;
+
+      return { text, model, cached: false, functionCalls };
+    } catch (error: any) {
+      const errorMessage = error.message || String(error);
+
+      const isRateLimit = errorMessage.includes('429') || errorMessage.includes('quota') || errorMessage.includes('RATE_LIMIT');
+
+      if (isRateLimit && attempt < maxRetries) {
+        attempt++;
+        const backoffTime = attempt * 2000; // 2s, 4s, 6s...
+        console.warn(`Gemini API rate limit hit. Retrying in ${backoffTime}ms (Attempt ${attempt} of ${maxRetries})...`);
+        await delay(backoffTime);
+        continue;
+      }
+
+      console.error("Gemini API Error:", error);
+
+      if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('invalid API key')) {
+        throw new Error('INVALID_API_KEY');
+      }
+      if (isRateLimit) {
+        throw new Error('RATE_LIMIT');
+      }
+      throw error;
     }
-    if (errorMessage.includes('429') || errorMessage.includes('quota') || errorMessage.includes('RATE_LIMIT')) {
-      throw new Error('RATE_LIMIT');
-    }
-    throw error;
   }
+
+  throw new Error('RATE_LIMIT');
 }
 
 export async function testGeminiConnection(key: string): Promise<boolean> {
   try {
     const ai = new GoogleGenAI({ apiKey: key });
     await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.0-flash',
       contents: 'Hi',
       config: { maxOutputTokens: 5 }
     });
