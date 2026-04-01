@@ -1,8 +1,8 @@
 import { useFirestore } from '@/src/hooks/useFirestore';
-import type { Payment, Expense, Receivable, Site, Task, Deal, Habit, LabourWorker } from '@/src/types';
+import type { Payment, Expense, Receivable, Site, Task, Deal, Habit } from '@/src/types';
 import { motion } from 'motion/react';
 import { cn, formatCurrency } from '@/src/lib/utils';
-import { CheckSquare, BarChart3, PieChart as PieChartIcon, Sparkles, Activity, Users, HardHat, IndianRupee, AlertTriangle } from 'lucide-react';
+import { CheckSquare, BarChart3, PieChart as PieChartIcon, Sparkles, Activity, Users, Wallet } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
 export default function Dashboard() {
@@ -13,81 +13,37 @@ export default function Dashboard() {
   const { data: tasks, update: updateTask } = useFirestore<Task>('tasks');
   const { data: deals } = useFirestore<Deal>('deals');
   const { data: habits, update: updateHabit } = useFirestore<Habit>('habits');
-  const { data: workers } = useFirestore<LabourWorker>('labour');
 
   const now = new Date();
-  const toAmount = (value: unknown) => {
-    const numeric = typeof value === 'number' ? value : Number.parseFloat(String(value ?? 0));
-    return Number.isFinite(numeric) ? numeric : 0;
-  };
-
   const thisMonth = (arr: any[]) =>
     arr.filter(x => {
       const d = new Date(x.date || x.createdAt);
       return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    }).reduce((s, x) => s + toAmount(x.amount), 0);
-
-  const isThisMonth = (value?: string) => {
-    if (!value) return false;
-    const d = new Date(value);
-    return !Number.isNaN(d.getTime()) && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  };
+    }).reduce((s, x) => s + (x.amount || 0), 0);
 
   const income = thisMonth(payments);
   const expense = thisMonth(expenses);
   const net = income - expense;
   
-  const partiesData = Array.from(
-    new Set([
-      ...payments.map((p) => (p.partyName || '').trim()),
-      ...expenses.map((e) => (e.partyName || '').trim()),
-    ].filter(Boolean))
-  );
+  const criticalReceivables = receivables.filter(r => {
+    const days = Math.floor((Date.now() - new Date(r.dueDate).getTime()) / 86400000);
+    return days > 60 && r.status !== 'Collected';
+  }).length;
 
-  const partyLedgers = partiesData.map(name => {
-    const given = expenses.filter(e => e.partyName?.toLowerCase() === name.toLowerCase()).reduce((s, e) => s + toAmount(e.amount), 0);
-    const received = payments.filter(p => p.partyName?.toLowerCase() === name.toLowerCase()).reduce((s, p) => s + toAmount(p.amount), 0);
-    return { name, net: received - given };
-  });
-
-  const totalReceivable = partyLedgers.filter(p => p.net < 0).reduce((s, p) => s + Math.abs(p.net), 0);
-  const criticalReceivables = partyLedgers.filter(p => p.net < 0 && Math.abs(p.net) > 50000).length;
+  const totalReceivable = receivables
+    .filter(r => r.status !== 'Collected')
+    .reduce((s, r) => s + (r.amount - r.amountCollected), 0);
 
   const activeSites = sites.filter(s => s.status === 'Active').length;
   const pendingTasks = tasks.filter(t => t.status !== 'Completed').length;
   const activeDeals = deals.filter(d => d.stage !== 'Won' && d.stage !== 'Lost').length;
   const pipelineValue = deals.filter(d => d.stage !== 'Won' && d.stage !== 'Lost').reduce((s, d) => s + d.amount, 0);
 
-  // Labour payroll summary
-  const getDerivedBalance = (worker: LabourWorker) => {
-    const historicalBalance = worker.balance || 0;
-    const accrued = worker.totalAccrued || 0;
-    const paidViaSync = expenses
-      .filter(e => e.labourName && e.labourName.toLowerCase() === worker.name.toLowerCase())
-      .reduce((sum, e) => sum + Number(e.amount || 0), 0);
-    return historicalBalance + accrued - paidViaSync;
-  };
-
-  const activeWorkers = workers.filter(w => w.status === 'Active');
-  const workersWithBalances = workers.map(w => ({ ...w, currentBalance: getDerivedBalance(w) })).filter(w => w.currentBalance > 0);
-  const totalWagesOwed = workersWithBalances.reduce((s, w) => s + w.currentBalance, 0);
-  const workersPendingPay = workersWithBalances.length;
-  const topDebtor = [...workersWithBalances].sort((a, b) => b.currentBalance - a.currentBalance)[0];
-
-  const allTimeIncome = payments.reduce((sum, p) => sum + toAmount(p.amount), 0);
-  const allTimeExpense = expenses.reduce((sum, e) => sum + toAmount(e.amount), 0);
-  const allTimeNet = allTimeIncome - allTimeExpense;
-  
-  // User Balances Calculation (derived from real synced/user data)
-  const partners = Array.from(
-    new Set([
-      ...payments.map((p) => (p.partner || '').trim()),
-      ...expenses.map((e) => (e.partner || '').trim()),
-    ].filter(Boolean))
-  );
+  // User Balances Calculation
+  const partners = ['Rohit', 'Gulshan'];
   const userBalances = partners.map(name => {
-    const userPayments = payments.filter(p => p.partner === name).reduce((s, p) => s + toAmount(p.amount), 0);
-    const userExpenses = expenses.filter(e => e.partner === name).reduce((s, e) => s + toAmount(e.amount), 0);
+    const userPayments = payments.filter(p => p.partner === name).reduce((s, p) => s + p.amount, 0);
+    const userExpenses = expenses.filter(e => e.partner === name).reduce((s, e) => s + e.amount, 0);
     const userTxns = payments.filter(p => p.partner === name).length + expenses.filter(e => e.partner === name).length;
     return {
       name,
@@ -115,17 +71,17 @@ export default function Dashboard() {
   payments.forEach(p => {
     const d = new Date(p.date);
     const m = last6Months.find(m => m.month === d.getMonth() && m.year === d.getFullYear());
-    if (m) m.Income += toAmount(p.amount);
+    if (m) m.Income += p.amount;
   });
 
   expenses.forEach(e => {
     const d = new Date(e.date);
     const m = last6Months.find(m => m.month === d.getMonth() && m.year === d.getFullYear());
-    if (m) m.Expenses += toAmount(e.amount);
+    if (m) m.Expenses += e.amount;
   });
 
   const expenseCategories = expenses.reduce((acc, curr) => {
-    acc[curr.category] = (acc[curr.category] || 0) + toAmount(curr.amount);
+    acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
     return acc;
   }, {} as Record<string, number>);
 
@@ -163,7 +119,7 @@ export default function Dashboard() {
           <h3 className="text-xl sm:text-2xl font-black text-[#00d4aa]">{formatCurrency(totalReceivable)}</h3>
           <p className="text-[10px] sm:text-xs text-gray-500 font-bold tracking-widest mt-1 mb-3 uppercase">Total Receivables</p>
           <span className={cn("text-[10px] px-2.5 py-1 rounded-full font-bold", criticalReceivables > 0 ? "bg-rose-500/10 text-rose-400" : "bg-emerald-500/10 text-emerald-400")}>
-            {criticalReceivables} {criticalReceivables === 1 ? 'Party' : 'Parties'} &gt; 50k
+            {criticalReceivables} Critical
           </span>
         </motion.div>
 
@@ -172,7 +128,7 @@ export default function Dashboard() {
           <h3 className="text-xl sm:text-2xl font-black text-[#00d4aa]">{formatCurrency(income)}</h3>
           <p className="text-[10px] sm:text-xs text-gray-500 font-bold tracking-widest mt-1 mb-3 uppercase">This Month Income</p>
           <span className="bg-[#00d4aa]/10 text-[#00d4aa] text-[10px] px-2.5 py-1 rounded-full font-bold">
-            {payments.filter(p => isThisMonth(p.date)).length} txns
+            {payments.filter(p => new Date(p.date).getMonth() === now.getMonth()).length} txns
           </span>
         </motion.div>
 
@@ -208,26 +164,9 @@ export default function Dashboard() {
           <h3 className="text-xl sm:text-2xl font-black text-[#8b5cf6]">{formatCurrency(totalBalanceInHand)}</h3>
           <p className="text-[10px] sm:text-xs text-gray-500 font-bold tracking-widest mt-1 mb-3 uppercase">Balance in Hand</p>
           <span className="bg-[#8b5cf6]/10 text-[#8b5cf6] text-[10px] px-2.5 py-1 rounded-full font-bold">
-            {partners.length > 0 ? `${partners.length} partners` : 'No partners yet'}
+            All Partners
           </span>
         </motion.div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
-        <div className="bg-[#111520] border border-[#1e2a40] rounded-2xl p-4">
-          <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">All-Time Income</p>
-          <p className="text-lg font-black text-emerald-400">{formatCurrency(allTimeIncome)}</p>
-        </div>
-        <div className="bg-[#111520] border border-[#1e2a40] rounded-2xl p-4">
-          <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">All-Time Expenses</p>
-          <p className="text-lg font-black text-rose-400">{formatCurrency(allTimeExpense)}</p>
-        </div>
-        <div className="bg-[#111520] border border-[#1e2a40] rounded-2xl p-4">
-          <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">All-Time Net</p>
-          <p className={cn("text-lg font-black", allTimeNet >= 0 ? "text-emerald-400" : "text-rose-400")}>
-            {formatCurrency(allTimeNet)}
-          </p>
-        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -298,12 +237,10 @@ export default function Dashboard() {
         className="bg-[#111520] border border-[#1e2a40] rounded-2xl p-5 shadow-lg mb-8">
         <h3 className="text-[11px] font-bold text-gray-400 tracking-widest uppercase mb-6 flex items-center gap-2">
           <Users className="w-4 h-4" />
-          User Balances
+          User Balances (YEO Partners)
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {userBalances.length === 0 ? (
-            <p className="text-sm text-gray-500 font-mono">No partner/user data found in payments or expenses yet.</p>
-          ) : userBalances.map((user, idx) => (
+          {userBalances.map((user, idx) => (
             <div key={user.name} className="bg-[#0b0e14] border border-[#1e2a40] rounded-2xl p-6 relative overflow-hidden">
               <div className="absolute top-0 left-0 w-1 h-full bg-[#3b82f6]" />
               <div className="flex justify-between items-start mb-6">
@@ -402,101 +339,6 @@ export default function Dashboard() {
             </div>
           ))}
         </div>
-      </motion.div>
-
-      {/* Labour Payroll Summary Widget */}
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.75 }}
-        className="bg-[#111520] border border-[#1e2a40] rounded-2xl p-5 shadow-lg">
-        <h3 className="text-[11px] font-bold text-gray-400 tracking-widest uppercase mb-5 flex items-center gap-2">
-          <HardHat className="w-4 h-4" />
-          Labour Payroll Summary
-        </h3>
-        {workers.length === 0 ? (
-          <p className="text-sm text-gray-500 font-mono">No workers added yet. Add workers in the Labour section.</p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {/* Total wages owed */}
-            <div className="bg-[#0b0e14] border border-[#1e2a40] rounded-2xl p-5 flex flex-col gap-2">
-              <div className="flex items-center gap-2 text-gray-500">
-                <IndianRupee className="w-4 h-4" />
-                <span className="text-[10px] font-bold uppercase tracking-widest">Total Wages Owed</span>
-              </div>
-              <p className={cn("text-2xl font-black", totalWagesOwed > 0 ? 'text-rose-400' : 'text-emerald-400')}>
-                {formatCurrency(totalWagesOwed)}
-              </p>
-              <span className={cn("text-[10px] px-2.5 py-1 rounded-full font-bold self-start", totalWagesOwed > 0 ? 'bg-rose-500/10 text-rose-400' : 'bg-emerald-500/10 text-emerald-400')}>
-                {workersPendingPay} workers unpaid
-              </span>
-            </div>
-
-            {/* Active workers */}
-            <div className="bg-[#0b0e14] border border-[#1e2a40] rounded-2xl p-5 flex flex-col gap-2">
-              <div className="flex items-center gap-2 text-gray-500">
-                <Users className="w-4 h-4" />
-                <span className="text-[10px] font-bold uppercase tracking-widest">Active Workers</span>
-              </div>
-              <p className="text-2xl font-black text-[#00d4aa]">{activeWorkers.length}</p>
-              <span className="text-[10px] px-2.5 py-1 rounded-full font-bold self-start bg-[#00d4aa]/10 text-[#00d4aa]">
-                {workers.length} total
-              </span>
-            </div>
-
-            {/* Highest pending */}
-            <div className="bg-[#0b0e14] border border-[#1e2a40] rounded-2xl p-5 flex flex-col gap-2">
-              <div className="flex items-center gap-2 text-gray-500">
-                <AlertTriangle className="w-4 h-4" />
-                <span className="text-[10px] font-bold uppercase tracking-widest">Highest Pending</span>
-              </div>
-              {topDebtor ? (
-                <>
-                  <p className="text-2xl font-black text-amber-400">{formatCurrency(topDebtor.balance)}</p>
-                  <span className="text-[10px] px-2.5 py-1 rounded-full font-bold self-start bg-amber-500/10 text-amber-400">
-                    {topDebtor.name}
-                  </span>
-                </>
-              ) : (
-                <p className="text-sm text-emerald-400 font-bold">All paid up ✓</p>
-              )}
-            </div>
-
-            {/* Worker breakdown table */}
-            {workersPendingPay > 0 && (
-              <div className="sm:col-span-3 overflow-x-auto">
-                <table className="w-full text-xs font-mono">
-                  <thead>
-                    <tr className="text-gray-600 border-b border-[#1e2a40]">
-                      <th className="text-left py-2 font-bold uppercase">Worker</th>
-                      <th className="text-left py-2 font-bold uppercase">Wage</th>
-                      <th className="text-left py-2 font-bold uppercase">Type</th>
-                      <th className="text-right py-2 font-bold uppercase">Pending</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {workers.filter(w => w.balance > 0).sort((a,b) => b.balance - a.balance).map(w => (
-                      <tr key={w.id} className="border-b border-[#1e2a40]/50 last:border-0">
-                        <td className="py-2 text-gray-300 font-medium">{w.name}</td>
-                        <td className="py-2 text-gray-400">
-                          {w.paymentType === 'Monthly' 
-                            ? `${formatCurrency(w.monthlyWage || 0)}/mo` 
-                            : `${formatCurrency(w.dailyWage)}/day`}
-                        </td>
-                        <td className="py-2">
-                          <span className={cn(
-                            'px-1.5 py-0.5 rounded text-[9px] font-bold uppercase', 
-                            w.paymentType === 'Monthly' ? 'bg-blue-500/10 text-blue-400' : 'bg-amber-500/10 text-amber-400'
-                          )}>
-                            {w.paymentType || 'Contract'}
-                          </span>
-                        </td>
-                        <td className="py-2 text-right text-rose-400 font-bold">{formatCurrency(w.balance)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
       </motion.div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

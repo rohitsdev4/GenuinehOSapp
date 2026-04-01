@@ -3,9 +3,10 @@ import {
   collection, doc,
   addDoc, updateDoc, deleteDoc,
   onSnapshot, query, orderBy,
-  serverTimestamp, Timestamp, writeBatch
+  serverTimestamp, Timestamp
 } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
+import { syncToSheet } from '@/src/lib/sync';
 
 export function useFirestore<T extends { id?: string }>(
   collectionName: string
@@ -61,6 +62,9 @@ export function useFirestore<T extends { id?: string }>(
         updatedAt: serverTimestamp(),
       });
       
+      // Sync to sheet
+      await syncToSheet('append', Object.values(item), 'Sheet1!A1');
+      
       return docRef.id;
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, path);
@@ -76,6 +80,9 @@ export function useFirestore<T extends { id?: string }>(
         ...partial,
         updatedAt: serverTimestamp(),
       });
+      
+      // Sync to sheet
+      await syncToSheet('update', Object.values(partial), 'Sheet1!A1');
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, path);
     }
@@ -92,37 +99,5 @@ export function useFirestore<T extends { id?: string }>(
     }
   };
 
-  const clearAll = async () => {
-    if (!userId) throw new Error('Not logged in');
-    try {
-      // Use batched writes to delete documents efficiently (up to 500 per batch)
-      const batches = [];
-      let currentBatch = writeBatch(db);
-      let opCount = 0;
-
-      for (const item of data) {
-        if (item.id) {
-          const docRef = doc(db, 'users', userId, collectionName, item.id);
-          currentBatch.delete(docRef);
-          opCount++;
-
-          if (opCount === 500) {
-            batches.push(currentBatch.commit());
-            currentBatch = writeBatch(db);
-            opCount = 0;
-          }
-        }
-      }
-
-      if (opCount > 0) {
-        batches.push(currentBatch.commit());
-      }
-
-      await Promise.all(batches);
-    } catch (err: any) {
-      handleFirestoreError(err, OperationType.DELETE, `users/${userId}/${collectionName}`);
-    }
-  };
-
-  return { data, loading, error, add, update, remove, clearAll };
+  return { data, loading, error, add, update, remove };
 }

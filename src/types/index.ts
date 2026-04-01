@@ -7,7 +7,6 @@ export interface Payment {
   siteId?: string;
   category?: string;
   notes?: string;
-  sourceRowKey?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -20,18 +19,7 @@ export interface Expense {
   partyName?: string;
   partner?: string;
   siteId?: string;
-  labourName?: string;
   notes?: string;
-  sourceRowKey?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface Party {
-  id?: string;
-  name: string;
-  type?: string;
-  balance?: number;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -53,20 +41,14 @@ export interface Site {
   name: string;
   location: string;
   clientId?: string;
-  clientName?: string;
   status: 'Active' | 'Completed' | 'On Hold';
   startDate?: string;
   endDate?: string;
   estimatedEndDate?: string;
   budget?: number;
-  projectCount?: number;
-  baseProjectCost?: number;
-  extraWorkCost?: number;
-  workType?: string;
-  amountReceived?: number;
-  amountPending?: number;
-  cost?: number;
   progress: number;
+  labourPaymentsPending?: number;
+  monthlyPayment?: number;
   notes?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -76,12 +58,8 @@ export interface LabourWorker {
   id?: string;
   name: string;
   phone?: string;
-  paymentType: 'Monthly' | 'Contract';
   dailyWage: number;
-  monthlyWage?: number;
-  balance: number; // dynamically computed in UI, kept for legacy compatibility
-  totalAccrued?: number; // the sum of all 'Mark Present' and 'Add Month' actions
-  localPayments?: { date: string; amount: number; note?: string }[]; // local app payments
+  balance: number;
   status: 'Active' | 'Inactive';
   notes?: string;
   createdAt?: string;

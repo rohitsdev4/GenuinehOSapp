@@ -11,11 +11,9 @@ interface AddWorkerModalProps {
 }
 
 export default function AddWorkerModal({ isOpen, onClose, worker }: AddWorkerModalProps) {
-  const { add, update } = useFirestore<LabourWorker>('labour');
+  const { add, update } = useFirestore<LabourWorker>('workers');
   const [name, setName] = useState(worker?.name || '');
-  const [paymentType, setPaymentType] = useState<'Monthly' | 'Contract'>(worker?.paymentType || 'Contract');
-  const [dailyWage, setDailyWage] = useState(worker?.dailyWage?.toString() || '');
-  const [monthlyWage, setMonthlyWage] = useState(worker?.monthlyWage?.toString() || '');
+  const [dailyWage, setDailyWage] = useState(worker?.dailyWage.toString() || '');
   const [phone, setPhone] = useState(worker?.phone || '');
   const [notes, setNotes] = useState(worker?.notes || '');
   const [loading, setLoading] = useState(false);
@@ -24,17 +22,13 @@ export default function AddWorkerModal({ isOpen, onClose, worker }: AddWorkerMod
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name) return;
-    if (paymentType === 'Monthly' && !monthlyWage) return;
-    if (paymentType === 'Contract' && !dailyWage) return;
+    if (!name || !dailyWage) return;
 
     setLoading(true);
     try {
       const workerData = {
         name,
-        paymentType,
-        dailyWage: paymentType === 'Contract' ? Number(dailyWage) : Number(monthlyWage || 0) / 30,
-        monthlyWage: paymentType === 'Monthly' ? Number(monthlyWage) : undefined,
+        dailyWage: Number(dailyWage),
         phone,
         notes,
         status: worker?.status || 'Active',
@@ -42,9 +36,9 @@ export default function AddWorkerModal({ isOpen, onClose, worker }: AddWorkerMod
       };
 
       if (worker?.id) {
-        await update(worker.id, workerData as any);
+        await update(worker.id, workerData);
       } else {
-        await add(workerData as any);
+        await add(workerData);
       }
       onClose();
     } catch (error) {
@@ -96,37 +90,17 @@ export default function AddWorkerModal({ isOpen, onClose, worker }: AddWorkerMod
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Payment Type</label>
-                <div className="grid grid-cols-2 gap-2 p-1 bg-[#07090f] border border-[#1e2a40] rounded-xl">
-                  {['Monthly', 'Contract'].map((type) => (
-                    <button
-                      key={type}
-                      type="button"
-                      onClick={() => setPaymentType(type as 'Monthly' | 'Contract')}
-                      className={`py-2 rounded-lg text-sm font-bold transition ${
-                        paymentType === type ? 'bg-[#1e2a40] text-white' : 'text-gray-500 hover:text-gray-300'
-                      }`}
-                    >
-                      {type} Basis
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                    {paymentType === 'Monthly' ? 'Monthly Wage (₹)' : 'Daily Wage (₹)'}
-                  </label>
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Daily Wage (₹)</label>
                   <div className="relative">
                     <IndianRupee className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#00d4aa]" />
                     <input 
                       type="number" 
                       required
-                      value={paymentType === 'Monthly' ? monthlyWage : dailyWage}
-                      onChange={(e) => paymentType === 'Monthly' ? setMonthlyWage(e.target.value) : setDailyWage(e.target.value)}
-                      placeholder={paymentType === 'Monthly' ? "30000" : "800"}
+                      value={dailyWage}
+                      onChange={(e) => setDailyWage(e.target.value)}
+                      placeholder="800"
                       className="w-full bg-[#07090f] border border-[#1e2a40] rounded-xl pl-10 pr-4 py-3 text-white outline-none focus:border-[#00d4aa] transition font-mono" 
                     />
                   </div>

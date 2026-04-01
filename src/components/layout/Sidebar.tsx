@@ -14,7 +14,7 @@ const navGroups = [
       { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
       { icon: CreditCard, label: 'Payments', path: '/payments' },
       { icon: Receipt, label: 'Expenses', path: '/expenses' },
-      { icon: HandCoins, label: 'Parties Ledger', path: '/parties' },
+      { icon: HandCoins, label: 'Receivables', path: '/receivables' },
       { icon: MapPin, label: 'Sites', path: '/sites' },
       { icon: Users, label: 'Labour', path: '/labour' },
     ]

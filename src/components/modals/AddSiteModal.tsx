@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { X, MapPin, Building2, Calendar, FileText } from 'lucide-react';
+import { X, MapPin, Building2, Calendar, FileText, BarChart, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFirestore } from '@/src/hooks/useFirestore';
-import type { Site } from '@/src/types';
+import type { Site, Client } from '@/src/types';
 
 interface AddSiteModalProps {
   isOpen: boolean;
@@ -11,15 +11,13 @@ interface AddSiteModalProps {
 
 export default function AddSiteModal({ isOpen, onClose }: AddSiteModalProps) {
   const { add } = useFirestore<Site>('sites');
+  const { data: clients } = useFirestore<Client>('clients');
   const [name, setName] = useState('');
   const [location, setLocation] = useState('');
   const [clientId, setClientId] = useState('');
-  const [clientName, setClientName] = useState('');
-  const [projectCount, setProjectCount] = useState('1');
-  const [baseProjectCost, setBaseProjectCost] = useState('');
-  const [extraWorkCost, setExtraWorkCost] = useState('');
-  const [workType, setWorkType] = useState('');
   const [estimatedEndDate, setEstimatedEndDate] = useState('');
+  const [labourPaymentsPending, setLabourPaymentsPending] = useState('');
+  const [monthlyPayment, setMonthlyPayment] = useState('');
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -31,23 +29,13 @@ export default function AddSiteModal({ isOpen, onClose }: AddSiteModalProps) {
 
     setLoading(true);
     try {
-      const parsedProjectCount = Number(projectCount || 1);
-      const parsedBaseCost = Number(baseProjectCost || 0);
-      const parsedExtraCost = Number(extraWorkCost || 0);
-      const totalValue = (parsedProjectCount * parsedBaseCost) + parsedExtraCost;
       await add({
         name,
         location,
         clientId,
-        clientName,
-        projectCount: parsedProjectCount,
-        baseProjectCost: parsedBaseCost,
-        extraWorkCost: parsedExtraCost,
-        budget: totalValue,
-        amountReceived: 0,
-        amountPending: totalValue,
-        workType,
         estimatedEndDate,
+        labourPaymentsPending: parseFloat(labourPaymentsPending) || 0,
+        monthlyPayment: parseFloat(monthlyPayment) || 0,
         progress: 0,
         status: 'Active',
         notes,
@@ -117,74 +105,20 @@ export default function AddSiteModal({ isOpen, onClose }: AddSiteModalProps) {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Client ID / Name</label>
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Client</label>
                   <div className="relative">
-                    <input 
-                      type="text" 
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                    <select 
                       value={clientId}
                       onChange={(e) => setClientId(e.target.value)}
-                      placeholder="Optional"
-                      className="w-full bg-[#07090f] border border-[#1e2a40] rounded-xl px-4 py-3 text-white outline-none focus:border-[#00d4aa] transition" 
-                    />
+                      className="w-full bg-[#07090f] border border-[#1e2a40] rounded-xl pl-10 pr-4 py-3 text-white outline-none focus:border-[#00d4aa] transition appearance-none"
+                    >
+                      <option value="">Select a client</option>
+                      {clients.map(client => (
+                        <option key={client.id} value={client.id}>{client.name}</option>
+                      ))}
+                    </select>
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Client Name</label>
-                  <input
-                    type="text"
-                    value={clientName}
-                    onChange={(e) => setClientName(e.target.value)}
-                    placeholder="E.g., Surgical wholesale mart"
-                    className="w-full bg-[#07090f] border border-[#1e2a40] rounded-xl px-4 py-3 text-white outline-none focus:border-[#00d4aa] transition"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Projects Count</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={projectCount}
-                    onChange={(e) => setProjectCount(e.target.value)}
-                    className="w-full bg-[#07090f] border border-[#1e2a40] rounded-xl px-4 py-3 text-white outline-none focus:border-[#00d4aa] transition font-mono"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Base Cost / Project (INR)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={baseProjectCost}
-                    onChange={(e) => setBaseProjectCost(e.target.value)}
-                    placeholder="110000"
-                    className="w-full bg-[#07090f] border border-[#1e2a40] rounded-xl px-4 py-3 text-white outline-none focus:border-[#00d4aa] transition font-mono"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Extra Work (INR)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={extraWorkCost}
-                    onChange={(e) => setExtraWorkCost(e.target.value)}
-                    placeholder="0"
-                    className="w-full bg-[#07090f] border border-[#1e2a40] rounded-xl px-4 py-3 text-white outline-none focus:border-[#00d4aa] transition font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Work Type</label>
-                  <input
-                    type="text"
-                    value={workType}
-                    onChange={(e) => setWorkType(e.target.value)}
-                    placeholder="E.g., Flooring / Ducting / Contract"
-                    className="w-full bg-[#07090f] border border-[#1e2a40] rounded-xl px-4 py-3 text-white outline-none focus:border-[#00d4aa] transition"
-                  />
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Est. End Date</label>
@@ -195,6 +129,33 @@ export default function AddSiteModal({ isOpen, onClose }: AddSiteModalProps) {
                       value={estimatedEndDate}
                       onChange={(e) => setEstimatedEndDate(e.target.value)}
                       className="w-full bg-[#07090f] border border-[#1e2a40] rounded-xl pl-10 pr-4 py-3 text-white outline-none focus:border-[#00d4aa] transition font-mono" 
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Labour Payments Pending</label>
+                  <div className="relative">
+                    <input 
+                      type="number" 
+                      value={labourPaymentsPending}
+                      onChange={(e) => setLabourPaymentsPending(e.target.value)}
+                      placeholder="0"
+                      className="w-full bg-[#07090f] border border-[#1e2a40] rounded-xl px-4 py-3 text-white outline-none focus:border-[#00d4aa] transition" 
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Monthly Payment</label>
+                  <div className="relative">
+                    <input 
+                      type="number" 
+                      value={monthlyPayment}
+                      onChange={(e) => setMonthlyPayment(e.target.value)}
+                      placeholder="0"
+                      className="w-full bg-[#07090f] border border-[#1e2a40] rounded-xl px-4 py-3 text-white outline-none focus:border-[#00d4aa] transition" 
                     />
                   </div>
                 </div>

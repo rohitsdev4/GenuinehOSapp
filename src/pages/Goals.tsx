@@ -1,33 +1,19 @@
 import { useState } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { Target, Plus, Trash2, Edit2 } from 'lucide-react';
+import { Target, Plus, CheckCircle2, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import AddGoalModal from '@/src/components/modals/AddGoalModal';
-import ConfirmModal from '@/src/components/ui/ConfirmModal';
 import { useFirestore } from '@/src/hooks/useFirestore';
 import type { Goal } from '@/src/types';
 
 export default function Goals() {
   const { data: goals, loading, remove: removeGoal } = useFirestore<Goal>('goals');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingGoal, setEditingGoal] = useState<Goal | undefined>(undefined);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const handleDeleteGoal = async () => {
-    if (deletingId) {
-      await removeGoal(deletingId);
-      setDeletingId(null);
+  const handleDeleteGoal = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this goal?')) {
+      await removeGoal(id);
     }
-  };
-
-  const handleEditGoal = (goal: Goal) => {
-    setEditingGoal(goal);
-    setIsModalOpen(true);
-  };
-
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setEditingGoal(undefined);
   };
 
   if (loading) return <div className="p-8 text-center text-gray-500">Loading goals...</div>;
@@ -74,14 +60,8 @@ export default function Goals() {
                     <Target className="w-5 h-5" />
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleEditGoal(goal)}
-                      className="p-1 text-gray-500 hover:text-[#00d4aa] transition"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
                     <button 
-                      onClick={() => goal.id && setDeletingId(goal.id)}
+                      onClick={() => goal.id && handleDeleteGoal(goal.id)}
                       className="p-1 text-gray-500 hover:text-rose-500 transition"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -119,16 +99,8 @@ export default function Goals() {
       </div>
 
       {isModalOpen && (
-        <AddGoalModal isOpen={isModalOpen} onClose={handleCloseModal} goal={editingGoal} />
+        <AddGoalModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
       )}
-
-      <ConfirmModal
-        isOpen={!!deletingId}
-        onClose={() => setDeletingId(null)}
-        onConfirm={handleDeleteGoal}
-        title="Delete Goal"
-        message="Are you sure you want to delete this goal? This action cannot be undone."
-      />
     </div>
   );
 }

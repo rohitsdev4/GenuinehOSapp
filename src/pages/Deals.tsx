@@ -1,34 +1,20 @@
 import { useState } from 'react';
 import PageHeader from '@/src/components/ui/PageHeader';
-import { Briefcase, Plus, MoreHorizontal, Trash2, Edit2 } from 'lucide-react';
+import { Briefcase, Plus, MoreHorizontal, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { formatCurrency } from '@/src/lib/utils';
 import AddDealModal from '@/src/components/modals/AddDealModal';
-import ConfirmModal from '@/src/components/ui/ConfirmModal';
 import { useFirestore } from '@/src/hooks/useFirestore';
 import type { Deal } from '@/src/types';
 
 export default function Deals() {
   const { data: deals, loading, remove: removeDeal } = useFirestore<Deal>('deals');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingDeal, setEditingDeal] = useState<Deal | undefined>(undefined);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const handleDeleteDeal = async () => {
-    if (deletingId) {
-      await removeDeal(deletingId);
-      setDeletingId(null);
+  const handleDeleteDeal = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this deal?')) {
+      await removeDeal(id);
     }
-  };
-
-  const handleEditDeal = (deal: Deal) => {
-    setEditingDeal(deal);
-    setIsModalOpen(true);
-  };
-
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setEditingDeal(undefined);
   };
 
   const columns = [
@@ -86,14 +72,8 @@ export default function Deals() {
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-black text-[#00d4aa]">{formatCurrency(deal.amount)}</span>
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={e => { e.stopPropagation(); handleEditDeal(deal); }}
-                        className="p-1 text-gray-500 hover:text-[#00d4aa] transition"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
                       <button 
-                        onClick={e => { e.stopPropagation(); deal.id && setDeletingId(deal.id); }}
+                        onClick={() => deal.id && handleDeleteDeal(deal.id)}
                         className="p-1 text-gray-500 hover:text-rose-500 transition"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -116,16 +96,8 @@ export default function Deals() {
       </div>
 
       {isModalOpen && (
-        <AddDealModal isOpen={isModalOpen} onClose={handleCloseModal} deal={editingDeal} />
+        <AddDealModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
       )}
-
-      <ConfirmModal
-        isOpen={!!deletingId}
-        onClose={() => setDeletingId(null)}
-        onConfirm={handleDeleteDeal}
-        title="Delete Deal"
-        message="Are you sure you want to delete this deal? This action cannot be undone."
-      />
     </div>
   );
 }
